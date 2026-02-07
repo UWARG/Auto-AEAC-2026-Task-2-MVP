@@ -9,4 +9,4 @@
 	url = https://github.com/UWARG/oak_d_vins_cpp
 [submodule "VINS-Fusion"]
 	path = VINS-Fusion
-	url = /home/warg/oakd/VINS-Fusion
+	url = https://github.com/UWARG/VINS-Fusion.git
