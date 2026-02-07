@@ -33,6 +33,9 @@ RESOURCE_RECORD_CHANNEL_B = 6
 ERROR_RADIUS_PX = 5  # pixels
 
 MILLIMETERS_TO_METERS = 1 / 1000.0
+STOP_DISTANCE_TO_BUILDING = 1.0
+
+WALL_DISTANCE_TO_POWER = 0.005 # TODO: change this value
 
 @dataclass
 class CameraConfig:
@@ -52,9 +55,9 @@ def get_distance_to_wall(frame: np.ndarray) -> float:
     return np.min(frame) * MILLIMETERS_TO_METERS
 
 """
-TODO: what this function should do is to take in the distance (obtained from oakd camera) 
+TODO: what this function should do is to take in the distance (obtained from oakd camera, in meters) 
 and then set the velocity through mav comm
-returns a boolean that indicates whether the drone is at less than 1m from the building
+returns a boolean that indicates whether the drone is in motion
 """
 def move_towards_building(
     mav_comm: MavlinkComm, distance: float
@@ -62,7 +65,24 @@ def move_towards_building(
     """
     Handle moving towards building 
     """
-    pass
+    velocity = Vector3d(0, 0, 0)
+    mav_comm.set_body_velocity(velocity)
+
+    if distance < STOP_DISTANCE_TO_BUILDING:
+        return False
+    
+    cur_heading = mav_comm.get_heading()
+    cur_heading_rad = cur_heading * math.pi / 180.0
+    dist_diff = distance - STOP_DISTANCE_TO_BUILDING
+    offset_x = dist_diff * math.cos(cur_heading_rad)
+    offset_y = dist_diff * math.sin(cur_heading_rad)
+
+    motion_velocity = Vector3d (
+        offset_x * WALL_DISTANCE_TO_POWER,
+        offset_y * WALL_DISTANCE_TO_POWER,
+        0
+    )
+    return True
 
 
 def handle_building_record(
@@ -340,6 +360,7 @@ def main() -> None:
         # Check mode switch (Channel 7)
         mode_channel_active = mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).is_active
 
+        # TODO: could this be a good entry point for just running the script? 
         # Send building info when transitioning from building mode to target mode
         if is_building_record_mode and not mode_channel_active:
             logging.info("Switching to target detection mode, sending building info")
@@ -359,7 +380,8 @@ def main() -> None:
         #         camera_configs, frames, mav_comm, building, recorded_resource
         #     )
 
-        # TODO: should we only get the forward camera? 
+        # TODO: should we only get the forward camera?
+        # TODO: can we get a flag to use the sim camera value?  
         oakd_distance = get_distance_to_wall(frames["FORWARD"])
         close_to_wall = move_towards_building(mav_comm, oakd_distance)
 
