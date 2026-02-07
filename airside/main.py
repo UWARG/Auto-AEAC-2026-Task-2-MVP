@@ -32,6 +32,7 @@ RESOURCE_RECORD_CHANNEL_B = 6
 # Target locking threshold: maximum allowed pixel error for successful lock
 ERROR_RADIUS_PX = 5  # pixels
 
+MILLIMETERS_TO_METERS = 1 / 1000.0
 
 @dataclass
 class CameraConfig:
@@ -43,6 +44,25 @@ class CameraConfig:
     label: str
     is_down_facing: bool
     channel: int  # RC channel for this camera (A or B)
+
+"""
+TODO: the frame should be an np.ndarray of depth in mm, find the min in meters
+"""
+def get_distance_to_wall(frame: np.ndarray) -> float:
+    return np.min(frame) * MILLIMETERS_TO_METERS
+
+"""
+TODO: what this function should do is to take in the distance (obtained from oakd camera) 
+and then set the velocity through mav comm
+returns a boolean that indicates whether the drone is at less than 1m from the building
+"""
+def move_towards_building(
+    mav_comm: MavlinkComm, distance: float
+) -> bool: 
+    """
+    Handle moving towards building 
+    """
+    pass
 
 
 def handle_building_record(
@@ -307,6 +327,7 @@ def main() -> None:
 
     while True:
         # Capture frames from all cameras
+        # TODO: how do we make sure that capture_frame can properly capture the depth map of the camera? 
         frames = {
             label: config.camera.capture_frame()
             for label, config in camera_configs.items()
@@ -315,9 +336,6 @@ def main() -> None:
         # Process MAVLink data stream
         while mav_comm.process_data_stream():
             pass
-
-        # TODO: send pictures down to groundside
-        
 
         # Check mode switch (Channel 7)
         mode_channel_active = mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).is_active
@@ -330,15 +348,24 @@ def main() -> None:
         # Update mode state
         is_building_record_mode = mode_channel_active
 
-        # Execute mode-specific functions
-        if is_building_record_mode:
-            recorded_resource = handle_building_record(
-                mav_comm, building, recorded_resource
-            )
-        else:
-            recorded_resource = handle_target_detection(
-                camera_configs, frames, mav_comm, building, recorded_resource
-            )
+        # # Execute mode-specific functions
+        # # TODO: change this for task 2
+        # if is_building_record_mode:
+        #     recorded_resource = handle_building_record(
+        #         mav_comm, building, recorded_resource
+        #     )
+        # else:
+        #     recorded_resource = handle_target_detection(
+        #         camera_configs, frames, mav_comm, building, recorded_resource
+        #     )
+
+        # TODO: should we only get the forward camera? 
+        oakd_distance = get_distance_to_wall(frames["FORWARD"])
+        close_to_wall = move_towards_building(mav_comm, oakd_distance)
+
+        if close_to_wall:
+            mav_comm.send_photos_to_ground(frames)
+            pass
 
         # Display HUD overlays for all cameras
         mode_str = "BUILDING_RECORD" if is_building_record_mode else "TARGET_DETECT"

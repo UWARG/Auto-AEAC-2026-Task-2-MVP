@@ -115,6 +115,43 @@ class Camera:
             else:
                 logging.error(f"opencv camera {self.camera_index} failed to initialize")
             return status
+        elif self.mode == "oakd":
+            print("Attempting to initialize Oak-D camera")
+            try: 
+                import depthai as dai
+                
+                # create pipeline
+                self.pipeline = dai.Pipeline()
+
+                self.mono_left = self.pipeline.createMonoCamera()
+                self.mono_right = self.pipeline.createMonoCamera()
+                self.mono_left.setBoardSocket(dai.CameraBoardSocket.LEFT)
+                self.mono_right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
+                self.mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
+                self.mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
+
+                 # create a stereo depth node to calculate the depths 
+                self.stereo_depth_node = self.pipeline.createStereoDepth()
+                self.stereo_depth_node.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
+                
+                # Link mono cameras to stereo depth node
+                self.mono_left.out.link(self.stereo_depth_node.left)
+                self.mono_right.out.link(self.stereo_depth_node.right)
+                
+                # Create output for depth
+                self.xout_depth = self.pipeline.createXLinkOut()
+                self.xout_depth.setStreamName("depth")
+                self.stereo_depth_node.depth.link(self.xout_depth.input)
+                
+                # Start the device
+                self.device = dai.Device(self.pipeline)
+                self.depth_queue = self.device.getOutputQueue(name="depth", maxSize=4, blocking=False)
+
+                return True
+
+            except Exception as e: 
+                logging.error(f"Oak-D camera failed to initialize due to exception {e}")
+                return False
         else:
             # sim
             from warg_common.simulator.world import create_demo_world

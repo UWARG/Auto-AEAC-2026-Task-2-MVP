@@ -18,6 +18,7 @@ from util import (
 from airside.building import Building
 import logging
 import time
+import numpy as np
 
 
 class MavlinkComm:
@@ -246,5 +247,8 @@ class MavlinkComm:
             logging.error(f"Failed to send building info to ground: {e}")
             self.send_building_info_to_ground(building, attempt + 1)
 
-    def send_photo_to_ground():
+    # TODO: implement LTE send to ground protocol
+    def send_photos_to_ground(
+        camera_frames: dict[str, np.ndarray | None]
+    ):
         pass
