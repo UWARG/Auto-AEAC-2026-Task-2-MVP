@@ -1,0 +1,12 @@
+[submodule "depthai-core"]
+	path = depthai-core
+	url = /home/warg/oakd/depthai-core
+[submodule "mavlink-udp-proxy"]
+	path = mavlink-udp-proxy
+	url = /home/warg/oakd/mavlink-udp-proxy
+[submodule "oak_d_vins_cpp"]
+	path = oak_d_vins_cpp
+	url = /home/warg/oakd/oak_d_vins_cpp
+[submodule "VINS-Fusion"]
+	path = VINS-Fusion
+	url = /home/warg/oakd/VINS-Fusion
