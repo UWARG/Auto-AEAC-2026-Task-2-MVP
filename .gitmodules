@@ -1,6 +1,6 @@
 [submodule "depthai-core"]
 	path = depthai-core
-	url = /home/warg/oakd/depthai-core
+	url = https://github.com/UWARG/depthai-core.git
 [submodule "mavlink-udp-proxy"]
 	path = mavlink-udp-proxy
 	url = https://github.com/UWARG/mavlink-udp-proxy.git
