@@ -6,7 +6,7 @@
 	url = https://github.com/UWARG/mavlink-udp-proxy.git
 [submodule "oak_d_vins_cpp"]
 	path = oak_d_vins_cpp
-	url = /home/warg/oakd/oak_d_vins_cpp
+	url = https://github.com/UWARG/oak_d_vins_cpp
 [submodule "VINS-Fusion"]
 	path = VINS-Fusion
 	url = /home/warg/oakd/VINS-Fusion
