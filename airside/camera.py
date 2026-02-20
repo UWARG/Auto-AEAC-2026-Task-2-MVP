@@ -142,10 +142,28 @@ class Camera:
                 self.xout_depth = self.pipeline.createXLinkOut()
                 self.xout_depth.setStreamName("depth")
                 self.stereo_depth_node.depth.link(self.xout_depth.input)
+
+                # Create RGB camera pipeline
+                self.color_camera = self.pipeline.createColorCamera()
+                self.color_camera.setBoardSocket(dai.CameraBoardSocket.CAM_A)
+                self.color_camera.setResolution(
+                    dai.ColorCameraProperties.SensorResolution.THE_1080_P
+                )
+                self.color_camera.setPreviewSize(640, 480)
+                self.color_camera.setInterleaved(False)
+                self.color_camera.setColorOrder(
+                    dai.ColorCameraProperties.ColorOrder.BGR
+                )
+
+                # Create output for RGB
+                self.xout_rgb = self.pipeline.createXLinkOut()
+                self.xout_rgb.setStreamName("rgb")
+                self.color_camera.preview.link(self.xout_rgb.input)
                 
                 # Start the device
                 self.device = dai.Device(self.pipeline)
                 self.depth_queue = self.device.getOutputQueue(name="depth", maxSize=4, blocking=False)
+                self.rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
 
                 return True
 
@@ -216,13 +234,24 @@ class Camera:
             return status
 
     def capture_depth_frame(self) -> np.ndarray | None:
-        """
-        Capture a single frame from the camera, for depth detection
-        """
         if self.mode == "oakd":
             depth_frame = self.depth_queue.tryGet()
             if depth_frame is not None:
                 return depth_frame.getFrame()
+            return None
+        else:
+            logging.error("capture_depth_frame called on non-Oak-D camera")
+            return None
+        
+
+    def capture_frame(self) -> np.ndarray | None:
+        """
+        Capture a single frame from the camera, for depth detection
+        """
+        if self.mode == "oakd":
+            rgb_frame = self.rgb_queue.tryGet()
+            if rgb_frame is not None:
+                return rgb_frame.getCvFrame()
             return None
         elif self._camera is not None:
             # Update simulation camera position from MAVLink

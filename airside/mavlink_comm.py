@@ -14,10 +14,18 @@ from util import (
     RCChannel,
     MavlinkMessageType,
     Vector3d,
+    FTP_HOST,
+    FTP_PORT,
+    FTP_USER,
+    FTP_PASSWORD,
+    FTP_UPLOAD_DIR,
 )
 from airside.building import Building
 import logging
 import time
+import io
+from ftplib import FTP
+import cv2
 import numpy as np
 
 
@@ -225,8 +233,52 @@ class MavlinkComm:
             logging.error(f"Failed to send acknowledgement to ground: {e}")
             self.send_ack_to_ground(msg, attempt + 1)
 
-    # TODO: implement LTE send to ground protocol
     def send_photos_to_ground(
-        camera_frames: dict[str, np.ndarray | None]
-    ):
-        pass
+        self, camera_frames: dict[str, np.ndarray | None]
+    ) -> bool:
+        """Upload camera frames to the ground station via FTP.
+
+        Each frame is JPEG-encoded and uploaded as <label>_<timestamp>.jpg
+        into the configured FTP_UPLOAD_DIR.
+
+        Args:
+            camera_frames: Mapping of camera label to BGR numpy array (or None).
+
+        Returns:
+            True if all frames were uploaded successfully, False otherwise.
+        """
+        timestamp = int(time.time())
+        try:
+            ftp = FTP()
+            ftp.connect(FTP_HOST, FTP_PORT, timeout=10)
+            ftp.login(FTP_USER, FTP_PASSWORD)
+
+            # Ensure upload directory exists
+            try:
+                ftp.cwd(FTP_UPLOAD_DIR)
+            except Exception:
+                ftp.mkd(FTP_UPLOAD_DIR)
+                ftp.cwd(FTP_UPLOAD_DIR)
+
+            for label, frame in camera_frames.items():
+                if frame is None:
+                    logging.warning(f"Skipping {label}: frame is None")
+                    continue
+
+                # Encode frame as JPEG into an in-memory buffer
+                success, encoded = cv2.imencode(".jpg", frame)
+                if not success:
+                    logging.error(f"Failed to JPEG-encode frame for {label}")
+                    continue
+
+                buf = io.BytesIO(encoded.tobytes())
+                filename = f"{label}_{timestamp}.jpg"
+                ftp.storbinary(f"STOR {filename}", buf)
+                logging.info(f"Uploaded {filename} ({len(encoded)} bytes)")
+
+            ftp.quit()
+            return True
+
+        except Exception as e:
+            logging.error(f"FTP upload failed: {e}")
+            return False

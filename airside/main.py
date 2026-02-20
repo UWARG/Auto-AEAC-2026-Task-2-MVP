@@ -94,15 +94,20 @@ def move_to_building_and_spray(
     sprayer: Sprayer
 ):
     while True:
-        frames = {
+        depth_frames = {
             label: config.camera.capture_depth_frame()
             for label, config in camera_configs.items()
         }
-        oakd_distance = oakd_get_distance_to_wall(frames["FORWARD"])
+        oakd_distance = oakd_get_distance_to_wall(depth_frames["FORWARD"])
         close_to_wall = move_towards_building(mav_comm, oakd_distance)
         if close_to_wall:
             break
-    mav_comm.send_photos_to_ground()
+    frames = {
+        label: config.camera.capture_frame()
+        for label, config in camera_configs.items()
+    }
+    if not mav_comm.send_photos_to_ground(frames):
+        logging.error("Failed to send photos to ground station")
     sprayer.spray()
 
 
@@ -119,8 +124,7 @@ def main() -> None:
     sprayer = Sprayer()
 
     # Initialize camera configurations
-    # Camera 0: Down-facing (for building recording/mapping and roof targets)
-    # Camera 1: Forward-facing (for target detection on walls)
+    # Camera 0: Forward-facing (for target detection on walls)
     camera_configs = {
         "FORWARD": CameraConfig(
             camera=Camera(camera_index=1, mode='oakd'),
@@ -220,7 +224,7 @@ def local_test() -> None:
     while True:
         # Capture frames from all cameras
         frames = {
-            label: config.camera.capture_depth_frame()
+            label: config.camera.capture_frame()
             for label, config in camera_configs.items()
         }
 

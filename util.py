@@ -65,6 +65,13 @@ MAVLINK_TCP_HOST = "127.0.0.1"
 MAVLINK_TCP_PORT = 5760
 MAVLINK_RECEIVE_TIMEOUT_SEC = 1.0
 
+# FTP constants for photo transfer (airside -> groundside)
+FTP_HOST = "192.168.196.67"  # Ground station IP
+FTP_PORT = 21
+FTP_USER = "drone"
+FTP_PASSWORD = "drone"
+FTP_UPLOAD_DIR = "/photos" # TODO: edit this directory to whichever is best for receiving photos on groundside
+
 class RCChannel:
     """Represents a single RC channel with raw value and activity status."""
 
