@@ -5,6 +5,9 @@ Sprayer module for activating spraying
 
 # TODO: fill in the implementation of this 
 class Sprayer: 
+    def spray():
+        pass
+
     def activate_sprayer():
         pass 
 

@@ -225,28 +225,6 @@ class MavlinkComm:
             logging.error(f"Failed to send acknowledgement to ground: {e}")
             self.send_ack_to_ground(msg, attempt + 1)
 
-    # TODO: is this needed for task 2? 
-    def send_building_info_to_ground(
-        self, building: Building, attempt: int = 0
-    ) -> None:
-        """Send building info to ground station."""
-        if attempt > 3:
-            logging.error("Failed to send building info to ground after 3 attempts")
-            return
-
-        try:
-            for corner in building.corners:
-                print("Corner: ", corner)
-                if corner is None:
-                    continue
-                self.mav.mav.statustext_send(
-                    mavutil.mavlink.MAV_SEVERITY_INFO,  # Severity: informational
-                    f"b_{corner.lat}_{corner.lon}_{corner.alt}".encode(),
-                )
-        except Exception as e:
-            logging.error(f"Failed to send building info to ground: {e}")
-            self.send_building_info_to_ground(building, attempt + 1)
-
     # TODO: implement LTE send to ground protocol
     def send_photos_to_ground(
         camera_frames: dict[str, np.ndarray | None]

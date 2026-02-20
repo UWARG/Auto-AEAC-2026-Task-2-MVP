@@ -20,6 +20,7 @@ from .camera import Camera
 from .mavlink_comm import MavlinkComm
 from .hud import HudState, overlay_hud
 from util import Coordinate, Vector3d
+from .sprayer import Sprayer
 
 # This proportional control gain determines how aggressively the drone moves
 # to correct position errors. Smaller values = gentler, more stable movement
@@ -48,16 +49,17 @@ class CameraConfig:
     is_down_facing: bool
     channel: int  # RC channel for this camera (A or B)
 
-"""
-TODO: the frame should be an np.ndarray of depth in mm, find the min in meters
-"""
-def get_distance_to_wall(frame: np.ndarray) -> float:
-    return np.min(frame) * MILLIMETERS_TO_METERS
+def oakd_get_distance_to_wall(frame: np.ndarray) -> float:
+    # filter out the invalid zero depth readings from oakd camera
+    valid_depths = frame[frame > 0]
+    if valid_depths.size == 0:
+        return float('inf')  # No valid readings
+    return np.min(valid_depths) * MILLIMETERS_TO_METERS
 
 """
-TODO: what this function should do is to take in the distance (obtained from oakd camera, in meters) 
+take in the distance (obtained from oakd camera, in meters) 
 and then set the velocity through mav comm
-returns a boolean that indicates whether the drone is in motion
+returns a boolean that indicates whether the drone is close to wall or not
 """
 def move_towards_building(
     mav_comm: MavlinkComm, distance: float
@@ -69,7 +71,7 @@ def move_towards_building(
     mav_comm.set_body_velocity(velocity)
 
     if distance < STOP_DISTANCE_TO_BUILDING:
-        return False
+        return True
     
     cur_heading = mav_comm.get_heading()
     cur_heading_rad = cur_heading * math.pi / 180.0
@@ -83,228 +85,26 @@ def move_towards_building(
         0
     )
     mav_comm.set_body_velocity(motion_velocity)
-    return True
+    return False
 
 
-def handle_building_record(
-    mav_comm: MavlinkComm, building: Building, recorded_resource: bool
-) -> bool:
-    """
-    Handle building record operations.
-
-    Channel A: Record building corner
-    Channel B: Record building height
-
-    Returns:
-        Updated recorded_resource flag
-    """
-    channel_a = mav_comm.get_rc_channel(RESOURCE_RECORD_CHANNEL_A).is_active
-    channel_b = mav_comm.get_rc_channel(RESOURCE_RECORD_CHANNEL_B).is_active
-
-    if channel_a and channel_b:
-        logging.error("Both building record channels are active")
-        return False
-
-    # Record building corner (Channel A)
-    if channel_a and not recorded_resource:
-        position = mav_comm.get_position()
-        building.record_corner(position)
-        corner_idx = (building.corner_record_cursor - 1) % 4
-        logging.info(f"Recorded building corner {corner_idx}: {position}")
-        mav_comm.send_ack_to_ground(f"c_{building.corners[corner_idx]}")
-        return True
-
-    # Record building height (Channel B)
-    elif channel_b and not recorded_resource:
-        altitude = mav_comm.get_position().alt
-        building.record_height(altitude)
-        logging.info(f"Recorded building height: {building.height}m")
-        mav_comm.send_ack_to_ground(f"h_{building.height}")
-        return True
-
-    # Reset flag when channels are released
-    elif not (channel_a or channel_b) and recorded_resource:
-        logging.debug("Resource recording flag reset")
-        return False
-
-    return recorded_resource
-
-# TODO: we don't need this function for task 2? 
-def process_target_locking(
-    frame: np.ndarray,
-    camera_config: CameraConfig,
-    mav_comm: MavlinkComm,
-    building: Building,
-    recorded_resource: bool,
-) -> bool:
-    """
-    Process target detection and locking for a specific camera.
-
-    Returns:
-        Updated recorded_resource flag
-    """
-    camera_name = camera_config.label
-    hud_state = camera_config.hud_state
-
-    if frame is None or frame.size == 0:
-        logging.warning(f"{camera_name} camera frame is invalid")
-        hud_state.reset()
-        return recorded_resource
-
-    # Calculate image center
-    img_center_x = frame.shape[1] // 2  # Horizontal center (width / 2)
-    img_center_y = frame.shape[0] // 2  # Vertical center (height / 2)
-
-    target = camera_config.camera.get_best_target(
-        camera_config.camera.find_targets(frame)
-    )
-
-    if target is None:
-        logging.debug(f"{camera_name} camera - No target colour detected")
-        hud_state.reset()
-        return recorded_resource
-
-    # Update HUD state with detected color
-    hud_state.target_colour = target.colour
-
-    target_center = (int(target.x), int(target.y))
-    if target_center:
-        target_center_x, target_center_y = target_center
-
-        offset_x = target_center_x - img_center_x
-        offset_y = target_center_y - img_center_y
-
-        error = math.hypot(offset_x, offset_y)
-
-        # Update HUD state with target tracking data
-        hud_state.update_target(
-            center=target_center,
-            colour=target.colour,
-            offset_x=float(offset_x),
-            offset_y=float(offset_y),
-            error=float(error),
-        )
-
-        logging.info(
-            f"{camera_name} camera - Target detected at ({target_center_x}, {target_center_y}), "
-            f"offset: ({offset_x}, {offset_y}), error: {error:.2f} px"
-        )
-
-        if error <= ERROR_RADIUS_PX and not recorded_resource:
-            drone_position = mav_comm.get_position()
-
-            if not camera_config.is_down_facing:
-                target_position = building.find_target_on_wall(
-                    drone_position, mav_comm.get_heading()
-                )
-
-                # Validate that we found a valid wall intersection
-                if target_position.lat == 0 and target_position.lon == 0:
-                    logging.warning(
-                        f"{camera_name} camera - Failed to find target on wall, "
-                        "building may not be fully mapped"
-                    )
-                    return recorded_resource
-            else:
-                if building.in_bounds(drone_position):
-                    target_position = Coordinate(
-                        lat=drone_position.lat,
-                        lon=drone_position.lon,
-                        alt=building.height,
-                    )
-                else:
-                    target_position = Coordinate(
-                        lat=drone_position.lat, lon=drone_position.lon, alt=0.0
-                    )
-
-            logging.info(
-                f"{camera_name} camera - Lock achieved! Error: {error:.2f} px <= {ERROR_RADIUS_PX} px. "
-                f"Sending target at {target_position} (colour: {target.colour.name}) to ground station"
-            )
-
-            velocity = Vector3d(0, 0, 0)
-            mav_comm.set_body_velocity(velocity)
-            mav_comm.send_target_to_ground(target_position, target.colour)
-
-            # Update HUD state for lock
-            hud_state.update_velocity(velocity)
-            hud_state.set_locked(True)
-
-            return True
-
-        if not recorded_resource:
-            if camera_config.is_down_facing:
-                velocity = Vector3d(
-                    x=-offset_y * PX_TO_MS,
-                    y=offset_x * PX_TO_MS,
-                    z=0.0,
-                )
-            else:
-                velocity = Vector3d(
-                    x=0.0,
-                    y=offset_x * PX_TO_MS,
-                    z=offset_y * PX_TO_MS,
-                )
-
-            logging.info(
-                f"{camera_name} camera - Sending velocity command: "
-                f"X={velocity.x:.6f}, Y={velocity.y:.6f}, Z={velocity.z:.6f} m/s"
-            )
-            mav_comm.set_body_velocity(velocity)
-
-            # Update HUD state with velocity
-            hud_state.update_velocity(velocity)
-            hud_state.set_locked(False)
-        else:
-            logging.info(
-                f"{camera_name} camera - Target already sent to ground, stopping movement"
-            )
-            velocity = Vector3d(0, 0, 0)
-            mav_comm.set_body_velocity(velocity)
-
-            # Update HUD state
-            hud_state.update_velocity(velocity)
-            hud_state.set_locked(True)
-    else:
-        logging.warning(f"{camera_name} camera - No target detected in frame")
-        hud_state.reset_target()
-
-    return recorded_resource
-
-# TODO: is this needed for task 2? 
-def handle_target_detection(
+def move_to_building_and_spray(
     camera_configs: dict[str, CameraConfig],
-    frames: dict[str, np.ndarray],
     mav_comm: MavlinkComm,
-    building: Building,
-    recorded_resource: bool,
-) -> bool:
-    """
-    Handle target detection and locking for all cameras.
+    sprayer: Sprayer
+):
+    while True:
+        frames = {
+            label: config.camera.capture_frame()
+            for label, config in camera_configs.items()
+        }
+        oakd_distance = oakd_get_distance_to_wall(frames["FORWARD"])
+        close_to_wall = move_towards_building(mav_comm, oakd_distance)
+        if close_to_wall:
+            break
+    mav_comm.send_photos_to_ground()
+    sprayer.spray()
 
-    Returns:
-        Updated recorded_resource flag
-    """
-    channel_a = mav_comm.get_rc_channel(RESOURCE_RECORD_CHANNEL_A).is_active
-    channel_b = mav_comm.get_rc_channel(RESOURCE_RECORD_CHANNEL_B).is_active
-
-    if channel_a and channel_b:
-        logging.error("Both target record channels are active")
-        return False
-
-    # Reset recorded_resource when both channels are off
-    if not (channel_a or channel_b) and recorded_resource:
-        return False
-
-    # Find which camera config corresponds to the active channel
-    for config in camera_configs.values():
-        channel_active = mav_comm.get_rc_channel(config.channel).is_active
-        if channel_active and frames.get(config.label) is not None:
-            return process_target_locking(
-                frames[config.label], config, mav_comm, building, recorded_resource
-            )
-
-    return recorded_resource
 
 
 def main() -> None:
@@ -315,7 +115,8 @@ def main() -> None:
     logging.info("Starting airside...")
 
     mav_comm = MavlinkComm()
-    building = Building()
+    # building = Building()
+    sprayer = Sprayer()
 
     # Initialize camera configurations
     # Camera 0: Down-facing (for building recording/mapping and roof targets)
@@ -336,16 +137,8 @@ def main() -> None:
         cv2.namedWindow(config.window_name, cv2.WINDOW_NORMAL)
 
     is_building_record_mode = True
-    recorded_resource = False
 
     while True:
-        # Capture frames from all cameras
-        # TODO: how do we make sure that capture_frame can properly capture the depth map of the camera? 
-        frames = {
-            label: config.camera.capture_frame()
-            for label, config in camera_configs.items()
-        }
-
         # Process MAVLink data stream
         while mav_comm.process_data_stream():
             pass
@@ -353,42 +146,35 @@ def main() -> None:
         # Check mode switch (Channel 7)
         mode_channel_active = mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).is_active
 
-        # TODO: could this be a good entry point for just running the script? 
         # Send building info when transitioning from building mode to target mode
         if is_building_record_mode and not mode_channel_active:
             logging.info("Switching to target detection mode, sending building info")
-            mav_comm.send_building_info_to_ground(building)
+            # mav_comm.send_building_info_to_ground(building)
+            move_to_building_and_spray(camera_configs, mav_comm, sprayer)
 
         # Update mode state
         is_building_record_mode = mode_channel_active
 
-        # TODO: should we only get the forward camera? (there is only a forward camera)
-        # TODO: can we get a flag to use the sim camera value?  
-        oakd_distance = get_distance_to_wall(frames["FORWARD"])
-        close_to_wall = move_towards_building(mav_comm, oakd_distance)
+        # TODO: do we need this for task 2?
+        # # Display HUD overlays for all cameras
+        # mode_str = "BUILDING_RECORD" if is_building_record_mode else "TARGET_DETECT"
+        # corner_count = (
+        #     building.corner_record_cursor if is_building_record_mode else None
+        # )
 
-        if close_to_wall:
-            mav_comm.send_photos_to_ground(frames)
-            pass
-
-        # Display HUD overlays for all cameras
-        mode_str = "BUILDING_RECORD" if is_building_record_mode else "TARGET_DETECT"
-        corner_count = (
-            building.corner_record_cursor if is_building_record_mode else None
-        )
-
-        for label, config in camera_configs.items():
-            frame = frames.get(label)
-            if frame is not None and frame.size > 0:
-                hud_frame = overlay_hud(
-                    frame=frame,
-                    camera_label=config.label,
-                    mode=mode_str,
-                    hud_state=config.hud_state,
-                    corner_count=corner_count,
-                    error_threshold_px=ERROR_RADIUS_PX,
-                )
-                cv2.imshow(config.window_name, hud_frame)
+        
+        # for label, config in camera_configs.items():
+        #     frame = frames.get(label)
+        #     if frame is not None and frame.size > 0:
+        #         hud_frame = overlay_hud(
+        #             frame=frame,
+        #             camera_label=config.label,
+        #             mode=mode_str,
+        #             hud_state=config.hud_state,
+        #             corner_count=corner_count,
+        #             error_threshold_px=ERROR_RADIUS_PX,
+        #         )
+        #         cv2.imshow(config.window_name, hud_frame)
 
         # Process keyboard input (required for cv2.imshow to work)
         key = cv2.waitKey(1) & 0xFF
@@ -428,7 +214,7 @@ def local_test() -> None:
         cv2.namedWindow(config.window_name, cv2.WINDOW_NORMAL)
 
     is_building_record_mode = True
-    recorded_resource = False
+
     logging.info("Entering event loop..")
 
     while True:
@@ -452,16 +238,7 @@ def local_test() -> None:
 
         # Update mode state
         is_building_record_mode = mode_channel_active
-        # Execute mode-specific functions
-        if is_building_record_mode:
-            recorded_resource = handle_building_record(
-                mav_comm, building, recorded_resource
-            )
-        else:
-            recorded_resource = handle_target_detection(
-                camera_configs, frames, mav_comm, building, recorded_resource
-            )
-
+        
         # Display HUD overlays for all cameras
         mode_str = "BUILDING_RECORD" if is_building_record_mode else "TARGET_DETECT"
         corner_count = (

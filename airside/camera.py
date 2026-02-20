@@ -220,7 +220,10 @@ class Camera:
         Capture a single frame from the camera.
         """
         if self.mode == "oakd":
-            # TODO: capture single frame from the camera
+            depth_frame = self.depth_queue.tryGet()
+            if depth_frame is not None:
+                return depth_frame.getFrame()
+            return None
         elif self._camera is not None:
             # Update simulation camera position from MAVLink
             if self.mode == "sim":
