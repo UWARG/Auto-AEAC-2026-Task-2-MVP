@@ -45,7 +45,7 @@ class Camera:
         exposure_time: int = DEFAULT_EXPOSURE_TIME,
         analogue_gain: float = DEFAULT_ANALOGUE_GAIN,
         auto_exposure: bool = DEFAULT_AUTO_EXPOSURE,
-        mode: Literal["rpi", "webcam", "sim", "dummy"] = "rpi",
+        mode: Literal["rpi", "webcam", "sim", "dummy", "oakd"] = "rpi",
         mav_comm=None,
     ) -> None:
         """
@@ -219,7 +219,9 @@ class Camera:
         """
         Capture a single frame from the camera.
         """
-        if self._camera is not None:
+        if self.mode == "oakd":
+            # TODO: capture single frame from the camera
+        elif self._camera is not None:
             # Update simulation camera position from MAVLink
             if self.mode == "sim":
                 from warg_common.simulator.coordinates import GPSCoord

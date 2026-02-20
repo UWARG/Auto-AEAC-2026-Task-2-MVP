@@ -35,7 +35,7 @@ ERROR_RADIUS_PX = 5  # pixels
 MILLIMETERS_TO_METERS = 1 / 1000.0
 STOP_DISTANCE_TO_BUILDING = 1.0
 
-WALL_DISTANCE_TO_POWER = 0.005 # TODO: change this value
+WALL_DISTANCE_TO_POWER = 0.005 # TODO: tune this value
 
 @dataclass
 class CameraConfig:
@@ -82,6 +82,7 @@ def move_towards_building(
         offset_y * WALL_DISTANCE_TO_POWER,
         0
     )
+    mav_comm.set_body_velocity(motion_velocity)
     return True
 
 
@@ -320,16 +321,8 @@ def main() -> None:
     # Camera 0: Down-facing (for building recording/mapping and roof targets)
     # Camera 1: Forward-facing (for target detection on walls)
     camera_configs = {
-        "DOWN": CameraConfig(
-            camera=Camera(camera_index=0),
-            hud_state=HudState(),
-            window_name="Down Camera",
-            label="DOWN",
-            is_down_facing=True,
-            channel=RESOURCE_RECORD_CHANNEL_A,
-        ),
         "FORWARD": CameraConfig(
-            camera=Camera(camera_index=1),
+            camera=Camera(camera_index=1, mode='oakd'),
             hud_state=HudState(),
             window_name="Forward Camera",
             label="FORWARD",
@@ -369,18 +362,7 @@ def main() -> None:
         # Update mode state
         is_building_record_mode = mode_channel_active
 
-        # # Execute mode-specific functions
-        # # TODO: change this for task 2
-        # if is_building_record_mode:
-        #     recorded_resource = handle_building_record(
-        #         mav_comm, building, recorded_resource
-        #     )
-        # else:
-        #     recorded_resource = handle_target_detection(
-        #         camera_configs, frames, mav_comm, building, recorded_resource
-        #     )
-
-        # TODO: should we only get the forward camera?
+        # TODO: should we only get the forward camera? (there is only a forward camera)
         # TODO: can we get a flag to use the sim camera value?  
         oakd_distance = get_distance_to_wall(frames["FORWARD"])
         close_to_wall = move_towards_building(mav_comm, oakd_distance)
@@ -431,14 +413,6 @@ def local_test() -> None:
     # Camera 0: Down-facing (for building recording/mapping and roof targets)
     # Camera 1: Forward-facing (for target detection on walls)
     camera_configs = {
-        "DOWN": CameraConfig(
-            camera=Camera(camera_index=0, mode="sim", mav_comm=mav_comm),
-            hud_state=HudState(),
-            window_name="Down Camera",
-            label="DOWN",
-            is_down_facing=True,
-            channel=RESOURCE_RECORD_CHANNEL_A,
-        ),
         "FORWARD": CameraConfig(
             camera=Camera(camera_index=1, mode="sim", mav_comm=mav_comm),
             hud_state=HudState(),
