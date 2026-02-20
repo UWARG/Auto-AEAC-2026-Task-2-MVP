@@ -95,7 +95,7 @@ def move_to_building_and_spray(
 ):
     while True:
         frames = {
-            label: config.camera.capture_frame()
+            label: config.camera.capture_depth_frame()
             for label, config in camera_configs.items()
         }
         oakd_distance = oakd_get_distance_to_wall(frames["FORWARD"])
@@ -182,7 +182,7 @@ def main() -> None:
             logging.info("'q' pressed, exiting...")
             break
 
-
+# TODO: change this for task 2
 def local_test() -> None:
     """Single-camera test for testing on local environments."""
     logging.basicConfig(
@@ -220,7 +220,7 @@ def local_test() -> None:
     while True:
         # Capture frames from all cameras
         frames = {
-            label: config.camera.capture_frame()
+            label: config.camera.capture_depth_frame()
             for label, config in camera_configs.items()
         }
 

@@ -215,9 +215,9 @@ class Camera:
                 logging.error(f"sim camera {self.camera_index} failed to initialize")
             return status
 
-    def capture_frame(self) -> np.ndarray | None:
+    def capture_depth_frame(self) -> np.ndarray | None:
         """
-        Capture a single frame from the camera.
+        Capture a single frame from the camera, for depth detection
         """
         if self.mode == "oakd":
             depth_frame = self.depth_queue.tryGet()
