@@ -14,20 +14,14 @@ from util import (
     RCChannel,
     MavlinkMessageType,
     Vector3d,
-    FTP_HOST,
-    FTP_PORT,
-    FTP_USER,
-    FTP_PASSWORD,
-    FTP_UPLOAD_DIR,
 )
 from airside.building import Building
 import logging
+import struct
 import time
-import io
-from ftplib import FTP
 import cv2
 import numpy as np
-
+import socket
 
 class MavlinkComm:
     """Handles MAVLink communication and data processing for drone control."""
@@ -234,51 +228,59 @@ class MavlinkComm:
             self.send_ack_to_ground(msg, attempt + 1)
 
     def send_photos_to_ground(
-        self, camera_frames: dict[str, np.ndarray | None]
+        self, camera_frames: dict[str, np.ndarray | None], server_sock: socket.socket
     ) -> bool:
-        """Upload camera frames to the ground station via FTP.
+        """Send camera frames to the ground station over a TCP socket.
 
-        Each frame is JPEG-encoded and uploaded as <label>_<timestamp>.jpg
-        into the configured FTP_UPLOAD_DIR.
+        Accepts a connection on server_sock, then for each frame sends:
+          - label length (4 bytes, unsigned int)
+          - label (UTF-8 encoded)
+          - JPEG data length (8 bytes, unsigned long long)
+          - JPEG data
+
+        A 4-byte frame count header is sent first so the receiver knows
+        how many frames to expect.
 
         Args:
             camera_frames: Mapping of camera label to BGR numpy array (or None).
+            server_sock: Listening TCP socket to accept a connection on.
 
         Returns:
-            True if all frames were uploaded successfully, False otherwise.
+            True if all frames were sent successfully, False otherwise.
         """
-        timestamp = int(time.time())
         try:
-            ftp = FTP()
-            ftp.connect(FTP_HOST, FTP_PORT, timeout=10)
-            ftp.login(FTP_USER, FTP_PASSWORD)
+            conn, addr = server_sock.accept()
+        except Exception as e:
+            logging.error(f"Socket accept failed: {e}")
+            return False
 
-            # Ensure upload directory exists
-            try:
-                ftp.cwd(FTP_UPLOAD_DIR)
-            except Exception:
-                ftp.mkd(FTP_UPLOAD_DIR)
-                ftp.cwd(FTP_UPLOAD_DIR)
-
+        try:
+            # Filter out None frames and encode to JPEG
+            encoded_frames: list[tuple[str, bytes]] = []
             for label, frame in camera_frames.items():
                 if frame is None:
                     logging.warning(f"Skipping {label}: frame is None")
                     continue
-
-                # Encode frame as JPEG into an in-memory buffer
                 success, encoded = cv2.imencode(".jpg", frame)
                 if not success:
                     logging.error(f"Failed to JPEG-encode frame for {label}")
                     continue
+                encoded_frames.append((label, encoded.tobytes()))
 
-                buf = io.BytesIO(encoded.tobytes())
-                filename = f"{label}_{timestamp}.jpg"
-                ftp.storbinary(f"STOR {filename}", buf)
-                logging.info(f"Uploaded {filename} ({len(encoded)} bytes)")
+            # Send number of frames
+            conn.sendall(struct.pack("!I", len(encoded_frames)))
 
-            ftp.quit()
+            for label, jpeg_bytes in encoded_frames:
+                label_bytes = label.encode("utf-8")
+                # Header: label length, label, image length, image data
+                header = struct.pack("!I", len(label_bytes))
+                conn.sendall(header + label_bytes + struct.pack("!Q", len(jpeg_bytes)) + jpeg_bytes)
+                logging.info(f"Sent {label} ({len(jpeg_bytes)} bytes)")
+
             return True
 
         except Exception as e:
-            logging.error(f"FTP upload failed: {e}")
+            logging.error(f"Socket send failed: {e}")
             return False
+        finally:
+            conn.close()

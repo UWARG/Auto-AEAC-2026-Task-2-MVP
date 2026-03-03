@@ -10,6 +10,7 @@ This module handles:
 
 import logging
 import math
+import threading
 from dataclasses import dataclass
 from typing import Optional, Literal
 
@@ -21,6 +22,12 @@ from .mavlink_comm import MavlinkComm
 from .hud import HudState, overlay_hud
 from util import Coordinate, Vector3d
 from .sprayer import Sprayer
+import socket
+
+HOST = "0.0.0.0" 
+PORT = 5000
+
+FC_ADDR = "udpout:192.168.144.14:14550"
 
 # This proportional control gain determines how aggressively the drone moves
 # to correct position errors. Smaller values = gentler, more stable movement
@@ -91,7 +98,8 @@ def move_towards_building(
 def move_to_building_and_spray(
     camera_configs: dict[str, CameraConfig],
     mav_comm: MavlinkComm,
-    sprayer: Sprayer
+    sprayer: Sprayer,
+    server_sock: socket.socket
 ):
     while True:
         depth_frames = {
@@ -106,9 +114,14 @@ def move_to_building_and_spray(
         label: config.camera.capture_frame()
         for label, config in camera_configs.items()
     }
-    if not mav_comm.send_photos_to_ground(frames):
-        logging.error("Failed to send photos to ground station")
     sprayer.spray()
+
+    def _send_photos():
+        if not mav_comm.send_photos_to_ground(frames, server_sock):
+            logging.error("Failed to send photos to ground station")
+
+    threading.Thread(target=_send_photos, daemon=True).start()
+    
 
 
 
@@ -142,8 +155,13 @@ def main() -> None:
 
     is_building_record_mode = True
 
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_sock.bind((HOST, PORT))
+    server_sock.listen(5)
+
     while True:
-        # Process MAVLink data stream
+        # Process MAVLink data stream 
         while mav_comm.process_data_stream():
             pass
 
@@ -154,7 +172,7 @@ def main() -> None:
         if is_building_record_mode and not mode_channel_active:
             logging.info("Switching to target detection mode, sending building info")
             # mav_comm.send_building_info_to_ground(building)
-            move_to_building_and_spray(camera_configs, mav_comm, sprayer)
+            move_to_building_and_spray(camera_configs, mav_comm, sprayer, server_sock)
 
         # Update mode state
         is_building_record_mode = mode_channel_active
@@ -271,7 +289,7 @@ def local_test() -> None:
 
 if __name__ == "__main__":
     try:
-        local_test()
+        main()
     except KeyboardInterrupt:
         logging.info("Keyboard interrupt received, exiting gracefully...")
     except Exception as e:
