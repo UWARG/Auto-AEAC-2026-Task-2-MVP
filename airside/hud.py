@@ -22,6 +22,9 @@ class HudState:
         self.error: float | None = None
         self.velocity: Vector3d | None = None
         self.locked: bool = False
+        # Position and heading from MAVLink
+        self.position: tuple[float, float, float] | None = None  # (lat, lon, alt)
+        self.heading: float | None = None  # degrees
 
     def reset(self) -> None:
         """Reset all HUD state to default values."""
@@ -62,6 +65,11 @@ class HudState:
     def set_locked(self, locked: bool) -> None:
         """Set lock status."""
         self.locked = locked
+
+    def update_nav(self, lat: float, lon: float, alt: float, heading: float) -> None:
+        """Update navigation data (position and heading)."""
+        self.position = (lat, lon, alt)
+        self.heading = heading
 
 
 # Color constants (BGR format for OpenCV)
@@ -247,6 +255,28 @@ def draw_metrics_panel(
         )
 
 
+def draw_nav_panel(
+    frame: np.ndarray,
+    position: tuple[float, float, float] | None = None,
+    heading: float | None = None,
+) -> None:
+    """Draw navigation panel in top-right corner."""
+    width = frame.shape[1]
+    x, y = width - 200, 30
+
+    if position is not None:
+        lat, lon, alt = position
+        _draw_text_with_background(frame, f"LAT: {lat:.6f}", (x, y), COLOR_CYAN)
+        y += TEXT_LINE_HEIGHT
+        _draw_text_with_background(frame, f"LON: {lon:.6f}", (x, y), COLOR_CYAN)
+        y += TEXT_LINE_HEIGHT
+        _draw_text_with_background(frame, f"ALT: {alt:.1f}m", (x, y), COLOR_CYAN)
+        y += TEXT_LINE_HEIGHT
+
+    if heading is not None:
+        _draw_text_with_background(frame, f"HDG: {heading:.1f} deg", (x, y), COLOR_CYAN)
+
+
 def overlay_hud(
     frame: np.ndarray,
     camera_label: str,
@@ -300,6 +330,9 @@ def overlay_hud(
         hud_state.velocity,
         hud_state.target_colour,
     )
+
+    # Draw navigation panel (position and heading)
+    draw_nav_panel(display_frame, hud_state.position, hud_state.heading)
 
     return display_frame
 

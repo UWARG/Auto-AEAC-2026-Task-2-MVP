@@ -25,17 +25,13 @@ from .sprayer import Sprayer
 import socket
 
 HOST = "0.0.0.0" 
-PORT = 5000
-
-FC_ADDR = "udpout:192.168.144.14:14550"
+PORT = 5005
 
 # This proportional control gain determines how aggressively the drone moves
 # to correct position errors. Smaller values = gentler, more stable movement
 PX_TO_MS = 0.004  # (m/s) per pixel
 
 MODE_CHANGE_CHANNEL = 7
-RESOURCE_RECORD_CHANNEL_A = 8
-RESOURCE_RECORD_CHANNEL_B = 6
 
 # Target locking threshold: maximum allowed pixel error for successful lock
 ERROR_RADIUS_PX = 5  # pixels
@@ -43,7 +39,7 @@ ERROR_RADIUS_PX = 5  # pixels
 MILLIMETERS_TO_METERS = 1 / 1000.0
 STOP_DISTANCE_TO_BUILDING = 1.0
 
-WALL_DISTANCE_TO_POWER = 0.005 # TODO: tune this value
+WALL_DISTANCE_TO_POWER = 0.5 # TODO: tune this value
 
 @dataclass
 class CameraConfig:
@@ -54,14 +50,15 @@ class CameraConfig:
     window_name: str
     label: str
     is_down_facing: bool
-    channel: int  # RC channel for this camera (A or B)
 
-def oakd_get_distance_to_wall(frame: np.ndarray) -> float:
+def oakd_get_distance_to_wall(frame: np.ndarray, mode: str) -> float:
     # filter out the invalid zero depth readings from oakd camera
     valid_depths = frame[frame > 0]
     if valid_depths.size == 0:
         return float('inf')  # No valid readings
-    return np.min(valid_depths) * MILLIMETERS_TO_METERS
+    min_depth = np.min(valid_depths)
+    # Oak-D returns depth in millimeters, sim returns meters
+    return min_depth * MILLIMETERS_TO_METERS if mode == "oakd" else min_depth
 
 """
 take in the distance (obtained from oakd camera, in meters) 
@@ -106,7 +103,9 @@ def move_to_building_and_spray(
             label: config.camera.capture_depth_frame()
             for label, config in camera_configs.items()
         }
-        oakd_distance = oakd_get_distance_to_wall(depth_frames["FORWARD"])
+        camera_mode = camera_configs["FORWARD"].camera.mode
+        oakd_distance = oakd_get_distance_to_wall(depth_frames["FORWARD"], camera_mode)
+        logging.info(f"distance from building: {oakd_distance}")
         close_to_wall = move_towards_building(mav_comm, oakd_distance)
         if close_to_wall:
             break
@@ -140,20 +139,17 @@ def main() -> None:
     # Camera 0: Forward-facing (for target detection on walls)
     camera_configs = {
         "FORWARD": CameraConfig(
-            camera=Camera(camera_index=1, mode='oakd'),
+            camera=Camera(camera_index=1, mode='oakd', mav_comm=mav_comm),
             hud_state=HudState(),
             window_name="Forward Camera",
             label="FORWARD",
             is_down_facing=False,
-            channel=RESOURCE_RECORD_CHANNEL_B,
         ),
     }
 
     # Create HUD display windows
     for config in camera_configs.values():
         cv2.namedWindow(config.window_name, cv2.WINDOW_NORMAL)
-
-    is_building_record_mode = True
 
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -169,42 +165,18 @@ def main() -> None:
         mode_channel_active = mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).is_active
 
         # Send building info when transitioning from building mode to target mode
-        if is_building_record_mode and not mode_channel_active:
+        if mode_channel_active:
             logging.info("Switching to target detection mode, sending building info")
             # mav_comm.send_building_info_to_ground(building)
             move_to_building_and_spray(camera_configs, mav_comm, sprayer, server_sock)
 
-        # Update mode state
-        is_building_record_mode = mode_channel_active
-
-        # TODO: do we need this for task 2?
-        # # Display HUD overlays for all cameras
-        # mode_str = "BUILDING_RECORD" if is_building_record_mode else "TARGET_DETECT"
-        # corner_count = (
-        #     building.corner_record_cursor if is_building_record_mode else None
-        # )
-
         
-        # for label, config in camera_configs.items():
-        #     frame = frames.get(label)
-        #     if frame is not None and frame.size > 0:
-        #         hud_frame = overlay_hud(
-        #             frame=frame,
-        #             camera_label=config.label,
-        #             mode=mode_str,
-        #             hud_state=config.hud_state,
-        #             corner_count=corner_count,
-        #             error_threshold_px=ERROR_RADIUS_PX,
-        #         )
-        #         cv2.imshow(config.window_name, hud_frame)
-
         # Process keyboard input (required for cv2.imshow to work)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             logging.info("'q' pressed, exiting...")
             break
 
-# TODO: change this for task 2
 def local_test() -> None:
     """Single-camera test for testing on local environments."""
     logging.basicConfig(
@@ -214,11 +186,14 @@ def local_test() -> None:
 
     mav_comm = MavlinkComm()
     logging.info("Mavlink communication established..")
+    # building = Building()
+    sprayer = Sprayer()
+
     building = Building()
+
 
     logging.info("Starting airside...")
     # Initialize camera configurations
-    # Camera 0: Down-facing (for building recording/mapping and roof targets)
     # Camera 1: Forward-facing (for target detection on walls)
     camera_configs = {
         "FORWARD": CameraConfig(
@@ -227,7 +202,6 @@ def local_test() -> None:
             window_name="Forward Camera",
             label="FORWARD",
             is_down_facing=False,
-            channel=RESOURCE_RECORD_CHANNEL_B,
         ),
     }
 
@@ -235,9 +209,14 @@ def local_test() -> None:
     for config in camera_configs.values():
         cv2.namedWindow(config.window_name, cv2.WINDOW_NORMAL)
 
-    is_building_record_mode = True
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_sock.bind((HOST, PORT))
+    server_sock.listen(5)
 
     logging.info("Entering event loop..")
+
+    spray_thread: threading.Thread | None = None
 
     while True:
         # Capture frames from all cameras
@@ -250,17 +229,29 @@ def local_test() -> None:
         while mav_comm.process_data_stream():
             pass
 
+        # Update HUD with position and heading
+        position = mav_comm.get_position()
+        heading = mav_comm.get_heading()
+        for config in camera_configs.values():
+            config.hud_state.update_nav(position.lat, position.lon, position.alt, heading)
+
         # Check mode switch (Channel 7)
         mode_channel_active = mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).is_active
 
-        # Send building info when transitioning from building mode to target mode
-        if is_building_record_mode and not mode_channel_active:
+        # Start spray operation in background thread if not already running
+        if mode_channel_active and (spray_thread is None or not spray_thread.is_alive()):
             logging.info("Switching to target detection mode, sending building info")
-            mav_comm.send_building_info_to_ground(building)
+            spray_thread = threading.Thread(
+                target=move_to_building_and_spray,
+                args=(camera_configs, mav_comm, sprayer, server_sock),
+                daemon=True
+            )
+            spray_thread.start()
 
-        # Update mode state
-        is_building_record_mode = mode_channel_active
         
+        # TODO: enable when testing
+
+        is_building_record_mode = True
         # Display HUD overlays for all cameras
         mode_str = "BUILDING_RECORD" if is_building_record_mode else "TARGET_DETECT"
         corner_count = (
@@ -274,6 +265,7 @@ def local_test() -> None:
                     frame=frame,
                     camera_label=config.label,
                     mode=mode_str,
+                    
                     hud_state=config.hud_state,
                     corner_count=corner_count,
                     error_threshold_px=ERROR_RADIUS_PX,
@@ -289,7 +281,7 @@ def local_test() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
+        local_test()
     except KeyboardInterrupt:
         logging.info("Keyboard interrupt received, exiting gracefully...")
     except Exception as e:

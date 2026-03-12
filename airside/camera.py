@@ -239,6 +239,32 @@ class Camera:
             if depth_frame is not None:
                 return depth_frame.getFrame()
             return None
+        elif self.mode == "sim":
+            from warg_common.simulator.coordinates import GPSCoord
+
+            if self._mav_comm is None:
+                logging.error("MavlinkComm instance required for sim mode")
+                return None
+
+            # Get current position and heading from MAVLink
+            position = self._mav_comm.get_position()
+            heading = self._mav_comm.get_heading()
+
+            # Convert util.Coordinate to simulator.GPSCoord
+            gps_coord = GPSCoord(
+                lat=position.lat, lon=position.lon, alt=position.alt
+            )
+
+            # Update simulation camera with current position
+            self._camera.update_position(gps_coord, heading)
+
+            dist = self._camera.get_forward_distance()
+            # if not status:
+            #     logging.warning(
+            #         "Failed frame capture due to camera implementation or timeout"
+            #     )
+            return np.array([dist])
+
         else:
             logging.error("capture_depth_frame called on non-Oak-D camera")
             return None
