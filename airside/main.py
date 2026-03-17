@@ -20,7 +20,7 @@ from .building import Building
 from .camera import Camera
 from .mavlink_comm import MavlinkComm
 from .hud import HudState, overlay_hud
-from util import Coordinate, Vector3d
+from util import Coordinate, Vector3d, MILLIMETERS_TO_METERS, get_waypoint_of_target, global_distance
 from .sprayer import Sprayer
 import socket
 
@@ -36,10 +36,8 @@ MODE_CHANGE_CHANNEL = 7
 # Target locking threshold: maximum allowed pixel error for successful lock
 ERROR_RADIUS_PX = 5  # pixels
 
-MILLIMETERS_TO_METERS = 1 / 1000.0
-STOP_DISTANCE_TO_BUILDING = 1.0
-
-WALL_DISTANCE_TO_POWER = 0.5 # TODO: tune this value
+# error distance that we allow for the drone to align with the wall 
+ERROR_DISTANCE_TO_WALL = 0.2 # TODO: tune
 
 @dataclass
 class CameraConfig:
@@ -60,57 +58,43 @@ def oakd_get_distance_to_wall(frame: np.ndarray, mode: str) -> float:
     # Oak-D returns depth in millimeters, sim returns meters
     return min_depth * MILLIMETERS_TO_METERS if mode == "oakd" else min_depth
 
-"""
-take in the distance (obtained from oakd camera, in meters) 
-and then set the velocity through mav comm
-returns a boolean that indicates whether the drone is close to wall or not
-"""
-def move_towards_building(
-    mav_comm: MavlinkComm, distance: float
-) -> bool: 
-    """
-    Handle moving towards building 
-    """
-    
-    if distance < STOP_DISTANCE_TO_BUILDING:
-        velocity = Vector3d(0, 0, 0)
-        mav_comm.set_body_velocity(velocity)
-        return True
-    
-    cur_heading = mav_comm.get_heading()
-    cur_heading_rad = cur_heading * math.pi / 180.0
-    dist_diff = distance - STOP_DISTANCE_TO_BUILDING
-    offset_x = dist_diff * math.cos(cur_heading_rad)
-    offset_y = dist_diff * math.sin(cur_heading_rad)
-
-    motion_velocity = Vector3d (
-        offset_x * WALL_DISTANCE_TO_POWER,
-        offset_y * WALL_DISTANCE_TO_POWER,
-        0
-    )
-
-    mav_comm.send_ack_to_ground("sending motion velocity")
-    mav_comm.set_body_velocity(motion_velocity)
-    return False
-
-
 def move_to_building_and_spray(
     camera_configs: dict[str, CameraConfig],
     mav_comm: MavlinkComm,
     sprayer: Sprayer,
-    server_sock: socket.socket
+    server_sock: socket.socket,
+    mode: str
 ):
+    
     while True:
-        depth_frames = {
-            label: config.camera.capture_depth_frame()
+        target_bounding_boxes = {
+            label: config.camera.capture_target()
             for label, config in camera_configs.items()
         }
         camera_mode = camera_configs["FORWARD"].camera.mode
-        oakd_distance = oakd_get_distance_to_wall(depth_frames["FORWARD"], camera_mode)
-        logging.info(f"distance from building: {oakd_distance}")
-        close_to_wall = move_towards_building(mav_comm, oakd_distance)
-        if close_to_wall:
-            break
+        if camera_mode == "oakd": 
+            oakd_bounding_boxes = target_bounding_boxes["FORWARD"]
+            if len(oakd_bounding_boxes) == 1:
+                x, y, w, h = oakd_bounding_boxes[0]
+                bbox_center_x = int(x + w / 2)
+                bbox_center_y = int(y + h / 2)
+                
+                # Get depth at bounding box center
+                depth_frame = camera_configs["FORWARD"].camera.capture_depth_frame()
+                if depth_frame is None or depth_frame[bbox_center_y, bbox_center_x] <= 0:
+                    continue
+
+                drone_pos = mav_comm.get_position()
+                drone_heading = mav_comm.get_heading()
+                
+                waypoint = get_waypoint_of_target(bbox_center_x, bbox_center_y, depth_frame, drone_pos, drone_heading)
+
+                if global_distance(drone_pos, waypoint) < 2 + ERROR_DISTANCE_TO_WALL: 
+                    break
+                
+                # Send precision loiter target to autopilot
+                mav_comm.send_precision_loiter_target(waypoint)
+  
     frames = {
         label: config.camera.capture_frame()
         for label, config in camera_configs.items()
@@ -170,7 +154,7 @@ def main() -> None:
         if mode_channel_active:
             logging.info("Switching to target detection mode, sending building info")
             # mav_comm.send_building_info_to_ground(building)
-            move_to_building_and_spray(camera_configs, mav_comm, sprayer, server_sock)
+            move_to_building_and_spray(camera_configs, mav_comm, sprayer, server_sock, "oakd")
 
         
         # Process keyboard input (required for cv2.imshow to work)
