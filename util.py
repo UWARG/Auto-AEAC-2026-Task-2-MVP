@@ -51,6 +51,9 @@ class Vector3d:
     def __str__(self):
         return f"({self.x}, {self.y}, {self.z})"
     
+    def norm(self) -> float:
+        return math.sqrt(self.x ** 2 + self.y ** 2 + self.z ** 2)
+    
 class Colour:
     def __init__(
         self,
@@ -126,9 +129,12 @@ drone_heading: the current heading of the drone
 
 assumes: 
 the drone is perfectly level, and the target is in frame
+the drone camera is facing forward, in the positive y direction 
+right = positive x direction
+down = negative z direction 
 
 returns: 
-the Coordinate object of the waypoint that is 2 meters in front of the target, depending on the yaw degree of the target
+the Vector3d to the waypoint that is 2m in front of the waypoint, depending on the yaw degree of the surface of the target 
 """
 def get_waypoint_of_target(
     target_center_x: int, 
@@ -136,7 +142,7 @@ def get_waypoint_of_target(
     depth_frame: np.ndarray, 
     drone_pos: Coordinate,
     drone_heading: float
-):
+) -> Vector3d:
     depth_to_target = depth_frame[target_center_y, target_center_x]
     depth_to_target *= MILLIMETERS_TO_METERS  # Convert mm to meters
     
@@ -154,7 +160,8 @@ def get_waypoint_of_target(
     pixel_offset_y = target_center_y - frame_center_y  # down is +y
 
     # TODO: calculate the yaw radian, for now mvp we just set it to 0
-    # we should make the yaw be determined from two/three points ON the target
+    # we should make the yaw be determined from something like this reference: 
+    # https://docs.luxonis.com/software-v3/depthai/examples/stereo_depth/stereo_depth/
     target_yaw_radian = 0 
     # negative = target facing the left of the drone, positive = target facing the right of the drone 
     waypoint_offset_forward = waypoint_distance * math.cos(target_yaw_radian)
@@ -166,16 +173,4 @@ def get_waypoint_of_target(
     body_right = (pixel_offset_x / focal_length_px) * depth_to_target + waypoint_offset_right
     body_down = (pixel_offset_y / focal_length_px) * depth_to_target
     
-    # Get drone position and heading
-
-    drone_heading_rad = drone_heading * math.pi / 180.0
-    
-    world_north = body_forward * math.cos(drone_heading_rad) - body_right * math.sin(drone_heading_rad)
-    world_east = body_forward * math.sin(drone_heading_rad) + body_right * math.cos(drone_heading_rad)
-    world_down = body_down
-    
-    waypoint_lat = drone_pos.lat + (world_north / METERS_PER_DEGREE_LATITUDE) * math.cos(drone_heading_rad)
-    waypoint_lon = drone_pos.lon + (world_east / (METERS_PER_DEGREE_LATITUDE * math.cos(math.radians(drone_pos.lat)))) * math.sin(drone_heading_rad)
-    waypoint_alt = drone_pos.alt - world_down
-    
-    return Coordinate(lat=waypoint_lat, lon=waypoint_lon, alt=waypoint_alt)
+    return Vector3d(body_right, body_forward, -body_down)

@@ -23,6 +23,7 @@ from .hud import HudState, overlay_hud
 from util import Coordinate, Vector3d, MILLIMETERS_TO_METERS, get_waypoint_of_target, global_distance
 from .sprayer import Sprayer
 import socket
+import time 
 
 HOST = "0.0.0.0" 
 PORT = 5005
@@ -89,11 +90,13 @@ def move_to_building_and_spray(
                 
                 waypoint = get_waypoint_of_target(bbox_center_x, bbox_center_y, depth_frame, drone_pos, drone_heading)
 
-                if global_distance(drone_pos, waypoint) < 2 + ERROR_DISTANCE_TO_WALL: 
+                if waypoint.norm() <= 2 + ERROR_DISTANCE_TO_WALL:
                     break
                 
                 # Send precision loiter target to autopilot
-                mav_comm.send_precision_loiter_target(waypoint)
+                mav_comm.send_waypoint_to_drone(waypoint)
+                time.sleep(30)
+
   
     frames = {
         label: config.camera.capture_frame()
