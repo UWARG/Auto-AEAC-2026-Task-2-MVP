@@ -71,10 +71,10 @@ def move_towards_building(
     """
     Handle moving towards building 
     """
-    velocity = Vector3d(0, 0, 0)
-    mav_comm.set_body_velocity(velocity)
-
+    
     if distance < STOP_DISTANCE_TO_BUILDING:
+        velocity = Vector3d(0, 0, 0)
+        mav_comm.set_body_velocity(velocity)
         return True
     
     cur_heading = mav_comm.get_heading()
@@ -88,6 +88,8 @@ def move_towards_building(
         offset_y * WALL_DISTANCE_TO_POWER,
         0
     )
+
+    mav_comm.send_ack_to_ground("sending motion velocity")
     mav_comm.set_body_velocity(motion_velocity)
     return False
 

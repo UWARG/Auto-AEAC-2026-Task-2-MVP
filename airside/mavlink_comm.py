@@ -48,7 +48,7 @@ class MavlinkComm:
         """Establish MAVLink connection to drone via serial port."""
         try:
             self.mav = mavutil.mavlink_connection(
-                "tcp:172.20.10.3:14550",
+                "tcp:192.168.238.67:5760",
                 baud=115200,
                 source_component=AIRSIDE_COMPONENT_ID,
                 source_system=1,
@@ -159,6 +159,7 @@ class MavlinkComm:
 
     def set_body_velocity(self, velocity: Vector3d, attempt: int = 0) -> None:
         """Set drone velocity in body frame (x=forward, y=right, z=down)."""
+        print(velocity)
         if attempt > 3:
             logging.error("Failed to set body velocity after 3 attempts")
             return
