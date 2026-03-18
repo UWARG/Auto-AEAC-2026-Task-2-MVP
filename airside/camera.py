@@ -270,39 +270,46 @@ class Camera:
             return None
         
     def capture_target(self) -> list[tuple[int, int, int, int]]: 
+        if self.mode != "oakd" and self.mode != "sim":
+            logging.error("capture target called on camera other than oakd and sim")
+            return []
+        
+
         if self.mode == "oakd": 
             rgb_frame = self.rgb_queue.tryGet()
-            if rgb_frame is None:
-                return []
-            
-            frame = rgb_frame.getCvFrame()
-            frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        else: # self.mode == "sim"
+            status, rgb_frame = self._camera.run()
+            if not status: 
+                logging.error("cannot get frame from sim camera in capture target")
+                
+        if rgb_frame is None:
+            return []
+        
+        frame = rgb_frame.getCvFrame()
+        frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-            mask = cv2.inRange(frame_hsv, self._target_lower_hsv, self._target_upper_hsv)
+        mask = cv2.inRange(frame_hsv, self._target_lower_hsv, self._target_upper_hsv)
 
-            # Clean up mask
-            kernel = np.ones((5, 5), np.uint8)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        # Clean up mask
+        kernel = np.ones((5, 5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            bounding_boxes = []
-            annotated = frame.copy()
+        bounding_boxes = []
+        annotated = frame.copy()
 
-            for contour in contours:
-                area = cv2.contourArea(contour)
-                if area < 300:
-                    continue
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < 300:
+                continue
 
-                x, y, w, h = cv2.boundingRect(contour)
-                bounding_boxes.append((x, y, w, h))
+            x, y, w, h = cv2.boundingRect(contour)
+            bounding_boxes.append((x, y, w, h))
 
-            return bounding_boxes
-            
-        else: 
-            logging.error("capture_target called on non oakd camera")
-            return None
+        return bounding_boxes
+
 
     def capture_frame(self) -> np.ndarray | None:
         """

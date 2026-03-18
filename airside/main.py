@@ -66,36 +66,47 @@ def move_to_building_and_spray(
     server_sock: socket.socket,
     mode: str
 ):
-    
+    camera_mode = camera_configs["FORWARD"].camera.mode
+    if camera_mode != "oakd" and camera_mode != "sim":
+        logging.error("calling move to building and spray on camera not oakd or sim")
+        return
     while True:
         target_bounding_boxes = {
             label: config.camera.capture_target()
             for label, config in camera_configs.items()
         }
-        camera_mode = camera_configs["FORWARD"].camera.mode
-        if camera_mode == "oakd": 
-            oakd_bounding_boxes = target_bounding_boxes["FORWARD"]
-            if len(oakd_bounding_boxes) == 1:
-                x, y, w, h = oakd_bounding_boxes[0]
-                bbox_center_x = int(x + w / 2)
-                bbox_center_y = int(y + h / 2)
-                
-                # Get depth at bounding box center
-                depth_frame = camera_configs["FORWARD"].camera.capture_depth_frame()
-                if depth_frame is None or depth_frame[bbox_center_y, bbox_center_x] <= 0:
-                    continue
+        if len(oakd_bounding_boxes) > 1:
+            logging.error("more than one target found")
+            return
+        if len(oakd_bounding_boxes) == 0:
+            logging.error("no targets found")
+            return
+        
+        oakd_bounding_boxes = target_bounding_boxes["FORWARD"]
+        if camera_mode == "oakd":  
+            x, y, w, h = oakd_bounding_boxes[0]
+            bbox_center_x = int(x + w / 2)
+            bbox_center_y = int(y + h / 2)
+        else:
+            bbox_center_x = 0
+            bbox_center_y = 0
+            
+        # Get depth at bounding box center
+        depth_frame = camera_configs["FORWARD"].camera.capture_depth_frame()
+        if depth_frame is None or depth_frame[bbox_center_y, bbox_center_x] <= 0:
+            continue
 
-                drone_pos = mav_comm.get_position()
-                drone_heading = mav_comm.get_heading()
-                
-                waypoint = get_waypoint_of_target(bbox_center_x, bbox_center_y, depth_frame, drone_pos, drone_heading)
+        drone_pos = mav_comm.get_position()
+        drone_heading = mav_comm.get_heading()
+        
+        waypoint = get_waypoint_of_target(bbox_center_x, bbox_center_y, depth_frame, drone_pos, drone_heading)
 
-                if waypoint.norm() <= 2 + ERROR_DISTANCE_TO_WALL:
-                    break
-                
-                # Send precision loiter target to autopilot
-                mav_comm.send_waypoint_to_drone(waypoint)
-                time.sleep(30)
+        if waypoint.norm() <= 2 + ERROR_DISTANCE_TO_WALL:
+            break
+        
+        # Send precision loiter target to autopilot
+        mav_comm.send_waypoint_to_drone(waypoint)
+        time.sleep(30)
 
   
     frames = {
