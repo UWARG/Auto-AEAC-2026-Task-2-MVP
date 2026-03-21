@@ -99,43 +99,40 @@
 #     stop_all_scripts()
 #     print("Cleanup complete.")
 
-import serial
+from pymavlink import mavutil
 import time
 
-# Try the primary hardware port for Pi 5 / Pi 4
-PORT = '/dev/ttyAMA0' 
+# Standard Pi UART port
+PORT = '/dev/serial0'
 BAUD = 57600
 
-try:
-    # Initialize the port
-    ser = serial.Serial(PORT, BAUD, timeout=1)
-    print(f"--- Starting Hardware Loopback on {PORT} ---")
+def test_connection():
+    print(f"--- Starting UART Test on {PORT} at {BAUD} baud ---")
     
-    # Clear any old data sitting in the buffer
-    ser.reset_input_buffer()
-    ser.reset_output_buffer()
-    
-    # Send a test string
-    test_string = b"HELLO_PI\n"
-    print(f"Sending: {test_string.decode().strip()}")
-    ser.write(test_string)
-    
-    # Give the hardware a tiny moment to process
-    time.sleep(0.1)
-    
-    # Read the data back
-    incoming_data = ser.readline()
-    
-    if incoming_data == test_string:
-        print(">>> SUCCESS: The Pi sent and received the data perfectly!")
-        print("Your Raspberry Pi hardware and software settings are CORRECT.")
-    elif len(incoming_data) > 0:
-        print(f">>> PARTIAL SUCCESS: Received data, but it was corrupted: {incoming_data}")
-    else:
-        print(">>> FAILED: Sent data but received NOTHING back.")
-        print("Check: Is the jumper wire securely touching Pins 8 and 10?")
+    try:
+        # Create the connection
+        master = mavutil.mavlink_connection(PORT, baud=BAUD)
+        
+        print("Waiting for Heartbeat... (Ensure Pixhawk is powered)")
+        
+        # Wait for 10 seconds for a heartbeat
+        msg = master.wait_heartbeat(timeout=10)
+        
+        if msg:
+            print("\n[SUCCESS] Heartbeat received!")
+            print(f"Target System ID: {master.target_system}")
+            print(f"Target Component ID: {master.target_component}")
+            print("-" * 40)
+            print("Your Pi and Pixhawk are successfully talking over UART.")
+        else:
+            print("\n[FAILED] No heartbeat received within 10 seconds.")
+            print("Checklist:")
+            print("1. Are TX and RX swapped? (Try flipping them)")
+            print("2. Is the Pixhawk SERIALx_PROTOCOL set to 1 or 2?")
+            print("3. Did you disable the Serial Console in raspi-config?")
+            
+    except Exception as e:
+        print(f"\n[ERROR] Could not open port: {e}")
 
-    ser.close()
-
-except Exception as e:
-    print(f"ERROR: Could not open {PORT}. {e}")
+if __name__ == "__main__":
+    test_connection()
