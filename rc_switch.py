@@ -78,8 +78,9 @@ try:
         # Wait for RC_CHANNELS message
         msg = master.recv_match(type='RC_CHANNELS', blocking=True, timeout=1.0)
         
-        # if not msg:
-        #     continue
+        if not msg:
+            print("here1")
+            #continue
 
         # Using Channel 11 for mode switching
         #pwm = msg.chan11_raw
