@@ -20,7 +20,7 @@ import time
 
 SEND_TO_GROUND = False
 
-HOST = "0.0.0.0" 
+HOST = "0.0.0.0"
 PORT = 5005
 
 ACTIVATE_SPRAY_CHANNEL = 6
@@ -31,6 +31,7 @@ SPRAY_COOLDOWN_SEC = 5.0
 
 # Target locking threshold: maximum allowed pixel error for successful lock
 ERROR_RADIUS_PX = 5  # pixels
+
 
 @dataclass
 class CameraConfig:
@@ -53,7 +54,7 @@ def main() -> None:
 
     # Initialize camera configuration
     forward_camera = CameraConfig(
-        camera=Camera(camera_index=1, mode='oakd', mav_comm=mav_comm),
+        camera=Camera(camera_index=1, mode="oakd", mav_comm=mav_comm),
         window_name="Forward Camera",
         label="FORWARD",
     )
@@ -69,7 +70,7 @@ def main() -> None:
     last_event = time.time() - SPRAY_COOLDOWN_SEC
 
     while True:
-        # Process MAVLink data stream 
+        # Process MAVLink data stream
         while mav_comm.process_data_stream():
             pass
 
@@ -81,14 +82,18 @@ def main() -> None:
 
         delta_event_time = time.time() - last_event
 
-        if spray_active and (not spray_switch_active or delta_event_time >= SPRAY_DURATION_SEC):
+        if spray_active and (
+            not spray_switch_active or delta_event_time >= SPRAY_DURATION_SEC
+        ):
             spray_active = False
             last_event = time.time()
             sprayer.deactivate_sprayer()
             logging.info(f"Spray deactivated after {delta_event_time:.2f} seconds")
 
             if SEND_TO_GROUND and server_sock is not None:
-                mav_comm.send_photos_to_ground({forward_camera.label: frame}, server_sock)
+                mav_comm.send_photos_to_ground(
+                    {forward_camera.label: frame}, server_sock
+                )
                 logging.info("Sent spray event frame to groundside")
 
             continue
@@ -98,7 +103,11 @@ def main() -> None:
             continue
 
         # Check if we can spray
-        if not (correct_mode_active and spray_switch_active and delta_event_time >= SPRAY_COOLDOWN_SEC):
+        if not (
+            correct_mode_active
+            and spray_switch_active
+            and delta_event_time >= SPRAY_COOLDOWN_SEC
+        ):
             continue
 
         # Check if the target is in the center
@@ -114,7 +123,9 @@ def main() -> None:
                 spray_active = True
                 last_event = time.time()
                 sprayer.activate_sprayer()
-                logging.info(f"Spray activated at {time.time():.2f}, target locked with error {error_distance:.2f} px")
+                logging.info(
+                    f"Spray activated at {time.time():.2f}, target locked with error {error_distance:.2f} px"
+                )
                 break
 
 

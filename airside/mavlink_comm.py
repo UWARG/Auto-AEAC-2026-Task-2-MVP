@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 import socket
 
+
 class MavlinkComm:
     """Handles MAVLink communication and data processing for drone control."""
 
@@ -275,7 +276,12 @@ class MavlinkComm:
                 label_bytes = label.encode("utf-8")
                 # Header: label length, label, image length, image data
                 header = struct.pack("!I", len(label_bytes))
-                conn.sendall(header + label_bytes + struct.pack("!Q", len(jpeg_bytes)) + jpeg_bytes)
+                conn.sendall(
+                    header
+                    + label_bytes
+                    + struct.pack("!Q", len(jpeg_bytes))
+                    + jpeg_bytes
+                )
                 logging.info(f"Sent {label} ({len(jpeg_bytes)} bytes)")
 
             return True
@@ -286,7 +292,6 @@ class MavlinkComm:
         finally:
             conn.close()
 
-
     # https://ardupilot.org/copter/docs/precision-landing-and-loiter.html
     def send_waypoint_to_drone(self, coord: Vector3d) -> bool:
         max_attempts = 10
@@ -294,19 +299,19 @@ class MavlinkComm:
             try:
                 self.mav.mav.landing_target_send(
                     int(time.time() * 1e6),  # time_usec
-                    0,                        # target_num (unused)
+                    0,  # target_num (unused)
                     mavutil.mavlink.MAV_FRAME_BODY_FRD,  # frame = 12
-                    0.0,                      # angle_x (unused if position_valid=1)
-                    0.0,                      # angle_y (unused if position_valid=1)
-                    0.0,                      # distance (0 = unknown)
-                    0.0,                      # size_x (unused)
-                    0.0,                      # size_y (unused)
-                    coord.x,                 # x: forward offset in meters
-                    coord.y,                 # y: right offset in meters
-                    coord.z,                 # z: down offset in meters
-                    [0,0,0,0],                # q (unused)
-                    0,                        # type (unused)
-                    1                         # position_valid = 1 (use x,y,z)
+                    0.0,  # angle_x (unused if position_valid=1)
+                    0.0,  # angle_y (unused if position_valid=1)
+                    0.0,  # distance (0 = unknown)
+                    0.0,  # size_x (unused)
+                    0.0,  # size_y (unused)
+                    coord.x,  # x: forward offset in meters
+                    coord.y,  # y: right offset in meters
+                    coord.z,  # z: down offset in meters
+                    [0, 0, 0, 0],  # q (unused)
+                    0,  # type (unused)
+                    1,  # position_valid = 1 (use x,y,z)
                 )
 
                 logging.info(

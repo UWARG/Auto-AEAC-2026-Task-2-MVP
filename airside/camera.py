@@ -117,9 +117,9 @@ class Camera:
             return status
         elif self.mode == "oakd":
             print("Attempting to initialize Oak-D camera")
-            try: 
+            try:
                 import depthai as dai
-                
+
                 # create pipeline
                 self.pipeline = dai.Pipeline()
 
@@ -127,17 +127,23 @@ class Camera:
                 self.mono_right = self.pipeline.createMonoCamera()
                 self.mono_left.setBoardSocket(dai.CameraBoardSocket.LEFT)
                 self.mono_right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
-                self.mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
-                self.mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
+                self.mono_left.setResolution(
+                    dai.MonoCameraProperties.SensorResolution.THE_400_P
+                )
+                self.mono_right.setResolution(
+                    dai.MonoCameraProperties.SensorResolution.THE_400_P
+                )
 
-                 # create a stereo depth node to calculate the depths 
+                # create a stereo depth node to calculate the depths
                 self.stereo_depth_node = self.pipeline.createStereoDepth()
-                self.stereo_depth_node.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
-                
+                self.stereo_depth_node.setDefaultProfilePreset(
+                    dai.node.StereoDepth.PresetMode.HIGH_DENSITY
+                )
+
                 # Link mono cameras to stereo depth node
                 self.mono_left.out.link(self.stereo_depth_node.left)
                 self.mono_right.out.link(self.stereo_depth_node.right)
-                
+
                 # Create output for depth
                 self.xout_depth = self.pipeline.createXLinkOut()
                 self.xout_depth.setStreamName("depth")
@@ -159,15 +165,19 @@ class Camera:
                 self.xout_rgb = self.pipeline.createXLinkOut()
                 self.xout_rgb.setStreamName("rgb")
                 self.color_camera.preview.link(self.xout_rgb.input)
-                
+
                 # Start the device
                 self.device = dai.Device(self.pipeline)
-                self.depth_queue = self.device.getOutputQueue(name="depth", maxSize=4, blocking=False)
-                self.rgb_queue = self.device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
+                self.depth_queue = self.device.getOutputQueue(
+                    name="depth", maxSize=4, blocking=False
+                )
+                self.rgb_queue = self.device.getOutputQueue(
+                    name="rgb", maxSize=4, blocking=False
+                )
 
                 return True
 
-            except Exception as e: 
+            except Exception as e:
                 logging.error(f"Oak-D camera failed to initialize due to exception {e}")
                 return False
         else:
@@ -251,9 +261,7 @@ class Camera:
             heading = self._mav_comm.get_heading()
 
             # Convert util.Coordinate to simulator.GPSCoord
-            gps_coord = GPSCoord(
-                lat=position.lat, lon=position.lon, alt=position.alt
-            )
+            gps_coord = GPSCoord(lat=position.lat, lon=position.lon, alt=position.alt)
 
             # Update simulation camera with current position
             self._camera.update_position(gps_coord, heading)
@@ -268,23 +276,22 @@ class Camera:
         else:
             logging.error("capture_depth_frame called on non-Oak-D camera")
             return None
-        
-    def capture_target(self) -> list[tuple[int, int, int, int]]: 
+
+    def capture_target(self) -> list[tuple[int, int, int, int]]:
         if self.mode != "oakd" and self.mode != "sim":
             logging.error("capture target called on camera other than oakd and sim")
             return []
-        
 
-        if self.mode == "oakd": 
+        if self.mode == "oakd":
             rgb_frame = self.rgb_queue.tryGet()
-        else: # self.mode == "sim"
+        else:  # self.mode == "sim"
             status, rgb_frame = self._camera.run()
-            if not status: 
+            if not status:
                 logging.error("cannot get frame from sim camera in capture target")
-                
+
         if rgb_frame is None:
             return []
-        
+
         frame = rgb_frame.getCvFrame()
         frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
@@ -309,7 +316,6 @@ class Camera:
             bounding_boxes.append((x, y, w, h))
 
         return bounding_boxes
-
 
     def capture_frame(self) -> np.ndarray | None:
         """

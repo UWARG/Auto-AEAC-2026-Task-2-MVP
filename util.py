@@ -10,6 +10,7 @@ MILLIMETERS_TO_METERS = 1 / 1000.0
 METERS_PER_DEGREE_LATITUDE = 111000
 EARTH_RADIUS_IN_METERS = 6_371_000
 
+
 @dataclass
 class Coordinate:
     """Represents a 3D coordinate with latitude, longitude in degrees, and altitude in meters."""
@@ -21,10 +22,13 @@ class Coordinate:
     def __str__(self) -> str:
         """Return string representation of coordinate."""
         return f"({self.lat}, {self.lon}, {self.alt})"
-    
+
+
 """
 get the distance between two Coordinate objects, in meters 
 """
+
+
 def global_distance(coord1: Coordinate, coord2: Coordinate) -> float:
     # reference: https://www.movable-type.co.uk/scripts/latlong.html
     lat1_rad = math.radians(coord1.lat)
@@ -35,11 +39,17 @@ def global_distance(coord1: Coordinate, coord2: Coordinate) -> float:
 
     alt1 = coord1.alt
     alt2 = coord2.alt
-    a = math.sin((lat2_rad - lat1_rad) / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin((long2_rad - long1_rad) / 2) ** 2
+    a = (
+        math.sin((lat2_rad - lat1_rad) / 2) ** 2
+        + math.cos(lat1_rad)
+        * math.cos(lat2_rad)
+        * math.sin((long2_rad - long1_rad) / 2) ** 2
+    )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     d = EARTH_RADIUS_IN_METERS * c
     return d
-    
+
+
 class Vector3d:
     """Represents a 3D vector with x, y, and z components."""
 
@@ -50,10 +60,11 @@ class Vector3d:
 
     def __str__(self):
         return f"({self.x}, {self.y}, {self.z})"
-    
+
     def norm(self) -> float:
-        return math.sqrt(self.x ** 2 + self.y ** 2 + self.z ** 2)
-    
+        return math.sqrt(self.x**2 + self.y**2 + self.z**2)
+
+
 class Colour:
     def __init__(
         self,
@@ -97,7 +108,8 @@ FTP_HOST = "192.168.196.67"  # Ground station IP
 FTP_PORT = 21
 FTP_USER = "drone"
 FTP_PASSWORD = "drone"
-FTP_UPLOAD_DIR = "/photos" # TODO: edit this directory to whichever is best for receiving photos on groundside
+FTP_UPLOAD_DIR = "/photos"  # TODO: edit this directory to whichever is best for receiving photos on groundside
+
 
 class RCChannel:
     """Represents a single RC channel with raw value and activity status."""
@@ -112,6 +124,7 @@ class RCChannel:
 
     def __repr__(self):
         return f"RCChannel(channel={self.channel}, raw={self.raw}, is_active={self.is_active})"
+
 
 class MavlinkMessageType(Enum):
     """MAVLink message types used in drone communication"""
@@ -136,17 +149,19 @@ down = negative z direction
 returns: 
 the Vector3d to the waypoint that is 2m in front of the waypoint, depending on the yaw degree of the surface of the target 
 """
+
+
 def get_waypoint_of_target(
-    target_center_x: int, 
-    target_center_y: int, 
-    depth_frame: np.ndarray, 
+    target_center_x: int,
+    target_center_y: int,
+    depth_frame: np.ndarray,
     drone_pos: Coordinate,
-    drone_heading: float
+    drone_heading: float,
 ) -> Vector3d:
     depth_to_target = depth_frame[target_center_y, target_center_x]
     depth_to_target *= MILLIMETERS_TO_METERS  # Convert mm to meters
-    
-    # Oak-D camera intrinsics 
+
+    # Oak-D camera intrinsics
     # TODO: tune this
     frame_width = 640
     frame_height = 480
@@ -160,17 +175,19 @@ def get_waypoint_of_target(
     pixel_offset_y = target_center_y - frame_center_y  # down is +y
 
     # TODO: calculate the yaw radian, for now mvp we just set it to 0
-    # we should make the yaw be determined from something like this reference: 
+    # we should make the yaw be determined from something like this reference:
     # https://docs.luxonis.com/software-v3/depthai/examples/stereo_depth/stereo_depth/
-    target_yaw_radian = 0 
-    # negative = target facing the left of the drone, positive = target facing the right of the drone 
+    target_yaw_radian = 0
+    # negative = target facing the left of the drone, positive = target facing the right of the drone
     waypoint_offset_forward = waypoint_distance * math.cos(target_yaw_radian)
     waypoint_offset_right = waypoint_distance * math.sin(target_yaw_radian)
     # waypoint_offset_down = 0
 
     # with respect to the current heading of the drone body, how much forward, right and down the drone has to move
     body_forward = depth_to_target - waypoint_offset_forward
-    body_right = (pixel_offset_x / focal_length_px) * depth_to_target + waypoint_offset_right
+    body_right = (
+        pixel_offset_x / focal_length_px
+    ) * depth_to_target + waypoint_offset_right
     body_down = (pixel_offset_y / focal_length_px) * depth_to_target
-    
+
     return Vector3d(body_right, body_forward, -body_down)
