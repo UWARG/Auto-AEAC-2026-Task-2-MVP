@@ -8,14 +8,11 @@ before it can spray again.
 """
 
 import logging
-import threading
 from dataclasses import dataclass
 
-import cv2
 import numpy as np
 from .camera import Camera
 from .mavlink_comm import MavlinkComm
-from util import Coordinate, Vector3d, MILLIMETERS_TO_METERS, get_waypoint_of_target, global_distance
 from .sprayer import Sprayer
 import socket
 import time
@@ -61,9 +58,6 @@ def main() -> None:
         label="FORWARD",
     )
 
-    # Create HUD display windows
-    cv2.namedWindow(forward_camera.window_name, cv2.WINDOW_NORMAL)
-
     server_sock = None
     if SEND_TO_GROUND:
         server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -81,9 +75,13 @@ def main() -> None:
 
         frame = forward_camera.camera.capture_frame()
 
+        # Check mode switch (Channel 6-7 :) )
+        spray_switch_active = mav_comm.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).is_active
+        correct_mode_active = not mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).is_active
+
         delta_event_time = time.time() - last_event
 
-        if spray_active and delta_event_time >= SPRAY_DURATION_SEC:
+        if spray_active and (not spray_switch_active or delta_event_time >= SPRAY_DURATION_SEC):
             spray_active = False
             last_event = time.time()
             sprayer.deactivate_sprayer()
@@ -93,16 +91,14 @@ def main() -> None:
                 mav_comm.send_photos_to_ground({forward_camera.label: frame}, server_sock)
                 logging.info("Sent spray event frame to groundside")
 
-        # Check mode switch (Channel 6-7 :) )
-        spray_switch_active = mav_comm.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).is_active
-        correct_mode_active = not mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).is_active
-
-        # Check if we can spray
-        if not (correct_mode_active and spray_switch_active and delta_event_time >= SPRAY_COOLDOWN_SEC):
             continue
 
         if frame is None:
             logging.warning("Failed to capture frame from forward camera")
+            continue
+
+        # Check if we can spray
+        if not (correct_mode_active and spray_switch_active and delta_event_time >= SPRAY_COOLDOWN_SEC):
             continue
 
         # Check if the target is in the center
@@ -129,8 +125,3 @@ if __name__ == "__main__":
         logging.info("Keyboard interrupt received, exiting gracefully...")
     except Exception as e:
         logging.error(f"Unexpected error in main loop: {e}", exc_info=True)
-        raise
-    finally:
-        # Clean up cv2 windows
-        cv2.destroyAllWindows()
-        logging.info("HUD windows closed")
