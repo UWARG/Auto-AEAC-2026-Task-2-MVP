@@ -16,6 +16,7 @@ from .mavlink_comm import MavlinkComm
 from .sprayer import Sprayer
 import socket
 import time
+from util import MILLIMETERS_TO_METERS
 
 
 SEND_TO_GROUND = False
@@ -29,8 +30,10 @@ MODE_CHANGE_CHANNEL = 7
 SPRAY_DURATION_SEC = 0.5
 SPRAY_COOLDOWN_SEC = 5.0
 
-# Target locking threshold: maximum allowed pixel error for successful lock
-ERROR_RADIUS_PX = 5  # pixels
+# Target locking threshold and position to lock from center
+ERROR_RADIUS_PX = 20  # pixels
+TARGET_CENTER_POSITION_PX = (0, 0) # (x, y) offset from center moving right and down positive
+ERROR_DISTANCE_TO_WALL = 0.2
 
 
 @dataclass
@@ -41,6 +44,15 @@ class CameraConfig:
     window_name: str
     label: str
 
+
+def oakd_get_distance_to_wall(frame: np.ndarray, mode: str) -> float:
+    # filter out the invalid zero depth readings from oakd camera
+    valid_depths = frame[frame > 0]
+    if valid_depths.size == 0:
+        return float('inf')  # No valid readings
+    min_depth = np.min(valid_depths)
+    # Oak-D returns depth in millimeters, sim returns meters
+    return min_depth * MILLIMETERS_TO_METERS if mode == "oakd" else min_depth
 
 def main() -> None:
     """Main control loop for airside drone operations."""
@@ -113,10 +125,10 @@ def main() -> None:
         # Check if the target is in the center
         bounding_boxes = forward_camera.camera.capture_target()
         for bbox in bounding_boxes:
-            x_center = bbox[0] + bbox[2] / 2
-            y_center = bbox[1] + bbox[3] / 2
-            error_x = abs(x_center - frame.shape[1] / 2)
-            error_y = abs(y_center - frame.shape[0] / 2)
+            x_center = bbox[0] + (bbox[2] / 2)
+            y_center = bbox[1] + (bbox[3] / 2)
+            error_x = abs(x_center - ((frame.shape[1] / 2) + TARGET_CENTER_POSITION_PX[0]))
+            error_y = abs(y_center - ((frame.shape[0] / 2) + TARGET_CENTER_POSITION_PX[1]))
             error_distance = np.sqrt(error_x**2 + error_y**2)
 
             if error_distance <= ERROR_RADIUS_PX:
