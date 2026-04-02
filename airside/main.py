@@ -30,10 +30,10 @@ MODE_CHANGE_CHANNEL = 7
 SPRAY_DURATION_SEC = 0.5
 SPRAY_COOLDOWN_SEC = 5.0
 
-# Target locking threshold and position to lock from center
-ERROR_RADIUS_PX = 20  # pixels
-TARGET_CENTER_POSITION_PX = (0, 0) # (x, y) offset from center moving right and down positive
-ERROR_DISTANCE_TO_WALL = 0.2
+# Target locking threshold
+RADIUS_THRESHOLD_PX = 20  # Distance in pixels from the center of the bounding box to the wanted target position to consider it a lock
+TARGET_CENTER_POSITION_PX = (0, 0) # (x, y) wanted target position offset from center moving right and down positive
+DISTANCE_TO_WALL_THRESHOLD_M = 1.8 # Minimum distance to wall in meters to allow spraying
 
 
 @dataclass
@@ -45,11 +45,15 @@ class CameraConfig:
     label: str
 
 
-def oakd_get_distance_to_wall(frame: np.ndarray, mode: str) -> float:
-    # filter out the invalid zero depth readings from oakd camera
+def oakd_get_distance_to_wall(frame: np.ndarray | None, mode: str) -> float:
+    # Default if no frame is received means we are close enough to the wall
+    if frame is None:
+        return 0.0
+
+    # Filter out the invalid zero depth readings from oakd camera
     valid_depths = frame[frame > 0]
     if valid_depths.size == 0:
-        return float('inf')  # No valid readings
+        return 0.0  # No valid readings
     min_depth = np.min(valid_depths)
     # Oak-D returns depth in millimeters, sim returns meters
     return min_depth * MILLIMETERS_TO_METERS if mode == "oakd" else min_depth
@@ -82,6 +86,8 @@ def main() -> None:
     last_event = time.time() - SPRAY_COOLDOWN_SEC
 
     while True:
+        time.sleep(0.02)
+
         # Process MAVLink data stream
         while mav_comm.process_data_stream():
             pass
@@ -114,7 +120,7 @@ def main() -> None:
             logging.warning("Failed to capture frame from forward camera")
             continue
 
-        # Check if we can spray
+        # Check if we can spray state-wise
         if not (
             correct_mode_active
             and spray_switch_active
@@ -122,16 +128,28 @@ def main() -> None:
         ):
             continue
 
+        # Check if the drone is close enough to the wall
+        depth_frame = forward_camera.camera.capture_depth_frame()
+        if (
+            oakd_get_distance_to_wall(depth_frame, forward_camera.camera.mode)
+            > DISTANCE_TO_WALL_THRESHOLD_M
+        ):
+            continue
+
         # Check if the target is in the center
-        bounding_boxes = forward_camera.camera.capture_target()
+        bounding_boxes = forward_camera.camera.capture_target(frame)
         for bbox in bounding_boxes:
             x_center = bbox[0] + (bbox[2] / 2)
             y_center = bbox[1] + (bbox[3] / 2)
-            error_x = abs(x_center - ((frame.shape[1] / 2) + TARGET_CENTER_POSITION_PX[0]))
-            error_y = abs(y_center - ((frame.shape[0] / 2) + TARGET_CENTER_POSITION_PX[1]))
+            error_x = abs(
+                x_center - ((frame.shape[1] / 2) + TARGET_CENTER_POSITION_PX[0])
+            )
+            error_y = abs(
+                y_center - ((frame.shape[0] / 2) + TARGET_CENTER_POSITION_PX[1])
+            )
             error_distance = np.sqrt(error_x**2 + error_y**2)
 
-            if error_distance <= ERROR_RADIUS_PX:
+            if error_distance <= RADIUS_THRESHOLD_PX:
                 spray_active = True
                 last_event = time.time()
                 sprayer.activate_sprayer()
@@ -139,7 +157,6 @@ def main() -> None:
                     f"Spray activated at {time.time():.2f}, target locked with error {error_distance:.2f} px"
                 )
                 break
-
 
 if __name__ == "__main__":
     try:

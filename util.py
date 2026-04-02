@@ -34,8 +34,8 @@ def global_distance(coord1: Coordinate, coord2: Coordinate) -> float:
     lat1_rad = math.radians(coord1.lat)
     lat2_rad = math.radians(coord2.lat)
 
-    long1_rad = math.radians(coord1.long)
-    long2_rad = math.radians(coord2.long)
+    long1_rad = math.radians(coord1.lon)
+    long2_rad = math.radians(coord2.lon)
 
     alt1 = coord1.alt
     alt2 = coord2.alt

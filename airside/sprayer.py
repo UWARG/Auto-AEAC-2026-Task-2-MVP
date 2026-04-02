@@ -9,7 +9,7 @@ class Sprayer:
         print("sprayed on the target")
 
     def activate_sprayer(self):
-        pass
+        print("activated sprayer")
 
     def deactivate_sprayer(self):
-        pass
+        print("deactivated sprayer")

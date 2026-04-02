@@ -277,12 +277,16 @@ class Camera:
             logging.error("capture_depth_frame called on non-Oak-D camera")
             return None
 
-    def capture_target(self) -> list[tuple[int, int, int, int]]:
+    def capture_target(
+        self, rgb_frame: np.ndarray | None = None
+    ) -> list[tuple[int, int, int, int]]:
         if self.mode != "oakd" and self.mode != "sim":
             logging.error("capture target called on camera other than oakd and sim")
             return []
 
-        if self.mode == "oakd":
+        if rgb_frame is not None:
+            pass
+        elif self.mode == "oakd":
             rgb_frame = self.rgb_queue.tryGet()
         else:  # self.mode == "sim"
             status, rgb_frame = self._camera.run()
