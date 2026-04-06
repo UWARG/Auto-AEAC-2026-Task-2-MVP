@@ -141,6 +141,7 @@ def main() -> None:
 
         # Check if the target is in the center
         bounding_boxes = forward_camera.camera.capture_target(frame)
+        logging.info(f"Detected {len(bounding_boxes)} bounding boxes in forward camera frame")
         for bbox in bounding_boxes:
             x_center = bbox[0] + (bbox[2] / 2)
             y_center = bbox[1] + (bbox[3] / 2)
