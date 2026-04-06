@@ -50,6 +50,7 @@ class MavlinkComm:
     def __mavlink_connect(self) -> bool:
         """Establish MAVLink connection to drone via serial port."""
         try:
+            logging.info(f"Connecting to drone at: tcp:{self.addr}:{self.port}")
             self.mav = mavutil.mavlink_connection(
                 f"tcp:{self.addr}:{self.port}",
                 baud=115200,
