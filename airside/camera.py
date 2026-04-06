@@ -99,7 +99,7 @@ class Camera:
 
             return status
         elif self.mode == "webcam":
-            print("Attempting to annitialize webcam camera")
+            print("Attempting to initialize webcam camera")
             from warg_common.camera.camera_opencv import ConfigOpenCV
 
             # index0 = webcam
@@ -251,7 +251,7 @@ class Camera:
                 return depth_frame.getFrame()
             return None
         elif self.mode == "webcam":
-            return np.array([[100]])
+            return np.array([[0.1]])
         elif self.mode == "sim":
             from warg_common.simulator.coordinates import GPSCoord
 
