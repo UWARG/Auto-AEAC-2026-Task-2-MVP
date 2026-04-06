@@ -35,7 +35,7 @@ SPRAY_DURATION_SEC = 0.5
 SPRAY_COOLDOWN_SEC = 5.0
 
 # Target locking threshold
-RADIUS_THRESHOLD_PX = 20  # Distance in pixels from the center of the bounding box to the wanted target position to consider it a lock
+RADIUS_THRESHOLD_PX = 100  # Distance in pixels from the center of the bounding box to the wanted target position to consider it a lock
 TARGET_CENTER_POSITION_PX = (0, 0) # (x, y) wanted target position offset from center moving right and down positive
 DISTANCE_TO_WALL_THRESHOLD_M = 1.8 # Minimum distance to wall in meters to allow spraying
 
