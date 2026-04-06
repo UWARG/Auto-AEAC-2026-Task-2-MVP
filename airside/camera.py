@@ -283,7 +283,7 @@ class Camera:
     def capture_target(
         self, rgb_frame: np.ndarray | None = None
     ) -> list[tuple[int, int, int, int]]:
-        if self.mode != "oakd" and self.mode != "sim":
+        if self.mode != "oakd" and self.mode != "sim" and rgb_frame is None:
             logging.error("capture target called on camera other than oakd and sim")
             return []
 
