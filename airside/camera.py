@@ -299,7 +299,11 @@ class Camera:
         if rgb_frame is None:
             return []
 
-        frame = rgb_frame.getCvFrame()
+        # Handle both OAK-D frame objects and numpy arrays
+        if isinstance(rgb_frame, np.ndarray):
+            frame = rgb_frame
+        else:
+            frame = rgb_frame.getCvFrame()
         frame_hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         mask = cv2.inRange(frame_hsv, self._target_lower_hsv, self._target_upper_hsv)
