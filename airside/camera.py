@@ -108,6 +108,7 @@ class Camera:
                 camera_option=CameraOption.OPENCV, width=640, height=480, config=config
             )
             self._camera = obj
+            print("status", status)
             if status:
                 logging.info(
                     f"opencv camera {self.camera_index} initialized successfully"
