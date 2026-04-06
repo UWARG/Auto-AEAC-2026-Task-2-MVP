@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
+import cv2
 from .camera import Camera
 from .mavlink_comm import MavlinkComm
 from .sprayer import Sprayer
@@ -73,7 +74,12 @@ def main() -> None:
 
     # Initialize camera configuration
     forward_camera = CameraConfig(
-        camera=Camera(camera_index=1, mode="webcam", mav_comm=mav_comm),
+        camera=Camera(
+            camera_index=1,
+            mode="webcam",
+            webcam_api_preference=cv2.CAP_DSHOW,
+            mav_comm=mav_comm,
+        ),
         window_name="Forward Camera",
         label="FORWARD",
     )

@@ -29,6 +29,49 @@ class TargetDetection:
     contour: np.ndarray = None  # OpenCV contour for visualization
 
 
+class _OpenCVCaptureCamera:
+
+    def __init__(self, capture: cv2.VideoCapture) -> None:
+        self._capture = capture
+
+    @classmethod
+    def create(
+        cls,
+        width: int,
+        height: int,
+        device_index: int,
+        api_preference: int | None = None,
+    ) -> tuple[bool, "_OpenCVCaptureCamera | None"]:
+        if api_preference is None:
+            capture = cv2.VideoCapture(device_index)
+        else:
+            capture = cv2.VideoCapture(device_index, api_preference)
+
+        if not capture.isOpened():
+            capture.release()
+            return False, None
+
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+        set_width = capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+        set_height = capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        if int(set_width) != width or int(set_height) != height:
+            capture.release()
+            return False, None
+
+        return True, cls(capture)
+
+    def __del__(self) -> None:
+        self._capture.release()
+
+    def run(self) -> tuple[bool, np.ndarray | None]:
+        result, frame = self._capture.read()
+        if not result:
+            return False, None
+        return True, frame
+
+
 class Camera:
     """
     Handles Raspberry Pi Camera Module 2 operations
@@ -45,6 +88,7 @@ class Camera:
         exposure_time: int = DEFAULT_EXPOSURE_TIME,
         analogue_gain: float = DEFAULT_ANALOGUE_GAIN,
         auto_exposure: bool = DEFAULT_AUTO_EXPOSURE,
+        webcam_api_preference: int | None = None,
         mode: Literal["rpi", "webcam", "sim", "dummy", "oakd"] = "rpi",
         mav_comm=None,
     ) -> None:
@@ -56,6 +100,7 @@ class Camera:
             exposure_time: Exposure time in microseconds
             analogue_gain: Analogue gain value
             auto_exposure: Enable/disable auto exposure
+            webcam_api_preference: Optional OpenCV API backend (e.g., cv2.CAP_DSHOW)
             mode: Camera mode (rpi, webcam, sim)
             mav_comm: MavlinkComm instance (required for sim mode)
         """
@@ -63,8 +108,9 @@ class Camera:
         self.exposure_time = exposure_time
         self.analogue_gain = analogue_gain
         self.auto_exposure_enabled = auto_exposure
+        self.webcam_api_preference = webcam_api_preference
         self.mode = mode
-        self._camera: BaseCameraDevice | None = None
+        self._camera: BaseCameraDevice | _OpenCVCaptureCamera | None = None
         self._mav_comm = mav_comm
         
         self._target_lower_hsv = np.array([0, 100, 100])
@@ -106,11 +152,26 @@ class Camera:
             print("Attempting to initialize webcam camera")
             from warg_common.camera.camera_opencv import ConfigOpenCV
 
-            # index0 = webcam
-            config = ConfigOpenCV(device_index=0)
-            status, obj = create_camera(
-                camera_option=CameraOption.OPENCV, width=640, height=480, config=config
-            )
+            status = False
+            obj = None
+
+            if self.webcam_api_preference is not None:
+                status, obj = _OpenCVCaptureCamera.create(
+                    width=640,
+                    height=480,
+                    device_index=0,
+                    api_preference=self.webcam_api_preference,
+                )
+
+            if not status:
+                config = ConfigOpenCV(device_index=0)
+                status, obj = create_camera(
+                    camera_option=CameraOption.OPENCV,
+                    width=640,
+                    height=480,
+                    config=config,
+                )
+
             self._camera = obj
             print("status", status)
             if status:
