@@ -66,6 +66,10 @@ class Camera:
         self.mode = mode
         self._camera: BaseCameraDevice | None = None
         self._mav_comm = mav_comm
+        
+        self._target_lower_hsv = np.array([0, 100, 100])
+        self._target_upper_hsv = np.array([30, 255, 255])
+        
         print("mode", self.mode)
 
         # Retry camera initialization
