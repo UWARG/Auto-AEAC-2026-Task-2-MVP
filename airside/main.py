@@ -147,7 +147,8 @@ def main() -> None:
 
         # Check if the target is in the center
         bounding_boxes = forward_camera.camera.capture_target(frame)
-        logging.info(f"Detected {len(bounding_boxes)} bounding boxes in forward camera frame")
+        if bounding_boxes:
+            logging.info(f"Detected {len(bounding_boxes)} bounding boxes in forward camera frame")
         for bbox in bounding_boxes:
             x_center = bbox[0] + (bbox[2] / 2)
             y_center = bbox[1] + (bbox[3] / 2)
@@ -158,6 +159,10 @@ def main() -> None:
                 y_center - ((frame.shape[0] / 2) + TARGET_CENTER_POSITION_PX[1])
             )
             error_distance = np.sqrt(error_x**2 + error_y**2)
+
+            print(
+                f"Target at ({x_center:.1f}, {y_center:.1f}), error distance: {error_distance:.2f} px"
+            )
 
             if error_distance <= RADIUS_THRESHOLD_PX:
                 spray_active = True
