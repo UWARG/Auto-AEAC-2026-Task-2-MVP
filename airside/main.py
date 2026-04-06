@@ -21,11 +21,14 @@ from util import MILLIMETERS_TO_METERS
 
 SEND_TO_GROUND = False
 
+MAVLINK_ADDR = "localhost"
+MAVLINK_PORT = 14550
+
 HOST = "0.0.0.0"
 PORT = 5005
 
 ACTIVATE_SPRAY_CHANNEL = 6
-MODE_CHANGE_CHANNEL = 7
+MODE_CHANGE_CHANNEL = 5
 
 SPRAY_DURATION_SEC = 0.5
 SPRAY_COOLDOWN_SEC = 5.0
@@ -45,7 +48,7 @@ class CameraConfig:
     label: str
 
 
-def oakd_get_distance_to_wall(frame: np.ndarray | None, mode: str) -> float:
+def _get_distance_to_wall(frame: np.ndarray | None, mode: str) -> float:
     # Default if no frame is received means we are close enough to the wall
     if frame is None:
         return 0.0
@@ -65,12 +68,12 @@ def main() -> None:
     )
     logging.info("Starting airside...")
 
-    mav_comm = MavlinkComm()
+    mav_comm = MavlinkComm(addr=MAVLINK_ADDR, port=MAVLINK_PORT)
     sprayer = Sprayer()
 
     # Initialize camera configuration
     forward_camera = CameraConfig(
-        camera=Camera(camera_index=1, mode="oakd", mav_comm=mav_comm),
+        camera=Camera(camera_index=1, mode="webcam", mav_comm=mav_comm),
         window_name="Forward Camera",
         label="FORWARD",
     )
@@ -95,8 +98,8 @@ def main() -> None:
         frame = forward_camera.camera.capture_frame()
 
         # Check mode switch (Channel 6-7 :) )
-        spray_switch_active = mav_comm.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).is_active
-        correct_mode_active = not mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).is_active
+        spray_switch_active = mav_comm.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw > 1500
+        correct_mode_active = not mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).raw > 1500
 
         delta_event_time = time.time() - last_event
 
@@ -131,7 +134,7 @@ def main() -> None:
         # Check if the drone is close enough to the wall
         depth_frame = forward_camera.camera.capture_depth_frame()
         if (
-            oakd_get_distance_to_wall(depth_frame, forward_camera.camera.mode)
+            _get_distance_to_wall(depth_frame, forward_camera.camera.mode)
             > DISTANCE_TO_WALL_THRESHOLD_M
         ):
             continue

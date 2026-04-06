@@ -26,11 +26,14 @@ import socket
 class MavlinkComm:
     """Handles MAVLink communication and data processing for drone control."""
 
-    def __init__(self) -> None:
+    def __init__(self, addr: str = "localhost", port: int = 14550) -> None:
         """Initialize drone connection and request data streams."""
         self.position: Coordinate | None = None
         # heading in degrees
         self.heading: float | None = None
+
+        self.addr = addr
+        self.port = port
 
         self.rc_channels: dict[int, RCChannel] = {
             i: RCChannel(channel=i, raw=0, is_active=False) for i in range(1, 10)
@@ -48,7 +51,7 @@ class MavlinkComm:
         """Establish MAVLink connection to drone via serial port."""
         try:
             self.mav = mavutil.mavlink_connection(
-                "tcp:192.168.238.67:5760",
+                f"tcp:{self.addr}:{self.port}",
                 baud=115200,
                 source_component=AIRSIDE_COMPONENT_ID,
                 source_system=1,

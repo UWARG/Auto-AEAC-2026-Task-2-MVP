@@ -249,6 +249,8 @@ class Camera:
             if depth_frame is not None:
                 return depth_frame.getFrame()
             return None
+        elif self.mode == "webcam":
+            return np.array([[100]])
         elif self.mode == "sim":
             from warg_common.simulator.coordinates import GPSCoord
 
