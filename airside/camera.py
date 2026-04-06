@@ -13,7 +13,7 @@ import logging
 import time
 from typing import Literal, List, Tuple
 
-from warg_common.simulator import SimCamera
+# from warg_common.simulator import SimCamera
 
 from util import Colour, Colours
 
