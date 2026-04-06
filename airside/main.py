@@ -101,6 +101,9 @@ def main() -> None:
         spray_switch_active = mav_comm.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw > 1500
         correct_mode_active = not mav_comm.get_rc_channel(MODE_CHANGE_CHANNEL).raw > 1500
 
+        if spray_switch_active and correct_mode_active:
+            logging.info("Spray switch active and correct mode detected")
+
         delta_event_time = time.time() - last_event
 
         if spray_active and (
