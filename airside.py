@@ -13,6 +13,7 @@ import logging
 import socket
 import struct
 import time
+import smbus2
 from dataclasses import dataclass
 from typing import Optional
 import typing
@@ -40,6 +41,8 @@ RADIUS_THRESHOLD_PX = 100
 TARGET_CENTER_POSITION_PX = (0, 0)
 DISTANCE_TO_WALL_THRESHOLD_M = 1.8
 
+TF_LUNA_I2C_ADDR = 0x10
+
 MIN_AREA = 300
 MIN_CIRCULARITY = 0.6
 MIN_FILL_RATIO = 0.7
@@ -49,7 +52,6 @@ GROUNDSIDE_HOST = "127.0.0.1"
 GROUNDSIDE_PORT = 5005
 
 CAMERA_MODE = "arducam"  # "oakd" or "arducam"
-FIXED_DEPTH_ARDUCAM = 0.2  # Fixed depth in meters for arducam TODO: Change later to TF-Luna
 
 ILLUMINATOR_RED = (255.0, 0.0, 0.0)
 ILLUMINATOR_GREEN = (0.0, 255.0, 0.0)
@@ -226,11 +228,13 @@ class Camera:
         self._oakd_device = None
         self._oakd_depth_queue = None
         self._webcam = None
+        self.bus = None
 
         if mode == "oakd":
             self._init_oakd()
         elif mode == "arducam":
             self._init_arducam()
+            self.bus = smbus2.SMBus(1)
         else:
             raise ValueError(f"Unknown camera mode: {mode}")
 
@@ -285,7 +289,7 @@ class Camera:
             raise RuntimeError("Failed to open Arducam")
         self._webcam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self._webcam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        logging.info("Arducam initialized (fixed depth: %.1f m)", FIXED_DEPTH_ARDUCAM)
+        logging.info("Arducam initialized")
 
     @typing.no_type_check
     def capture_frame(self) -> Optional[np.ndarray]:
@@ -312,15 +316,24 @@ class Camera:
             except Exception:
                 pass
         else:
-            if self._webcam is not None:
-                depth_frame = np.full((480, 640), FIXED_DEPTH_ARDUCAM, dtype=np.float32)
+            try:
+                data = self.bus.read_i2c_block_data(I2C_ADDR, 0x00, 6)
+                distance = data[0] + (data[1] << 8)
+
+            except Exception as e:
+                logging.error(f"Failed to read from TF-Luna: {e}")
+                return 100.0
+            
+            depth_frame = np.full((1, 1), distance, dtype=np.float32)
 
         if depth_frame is None:
-            return 0.0
+            logging.error("Failed to get depth frame")
+            return 100.0
         
         valid = depth_frame[depth_frame > 0]
         if valid.size == 0:
-            return 0.0
+            logging.warning("No valid depth pixels found")
+            return 100.0
         
         min_depth = float(np.min(valid))
         # OAK-D returns millimeters; arducam returns meters directly
