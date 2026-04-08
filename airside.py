@@ -51,6 +51,9 @@ GROUNDSIDE_PORT = 5005
 CAMERA_MODE = "arducam"  # "oakd" or "arducam"
 FIXED_DEPTH_ARDUCAM = 0.2  # Fixed depth in meters for arducam TODO: Change later to TF-Luna
 
+ILLUMINATOR_RED = (255.0, 0.0, 0.0)
+ILLUMINATOR_GREEN = (0.0, 255.0, 0.0)
+
 class Colour:
     def __init__(
         self,
@@ -135,6 +138,44 @@ class Mavlink:
 
     def get_rc_channel(self, channel: int) -> RCChannel:
         return self.rc_channels.get(channel, RCChannel(channel, 0))
+    
+    @typing.no_type_check
+    def send_led_spray_command(self, activate: bool) -> None:
+        """
+        Sets the leds to match the sprayer's state.
+
+        Green = spray on, Red = spray off.
+        """
+        if self.mav is None:
+            return
+
+        command = getattr(mavutil.mavlink, "MAV_CMD_DO_ILLUMINATOR_CONFIGURE", None)
+        if command is None:
+            logging.error("MAV_CMD_DO_ILLUMINATOR_CONFIGURE not available")
+            return
+
+        r, g, b = ILLUMINATOR_GREEN if activate else ILLUMINATOR_RED
+
+        try:
+            self.mav.mav.command_long_send(
+                self.mav.target_system,
+                self.mav.target_component,
+                command,
+                0,
+                r,
+                g,
+                b,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            )
+            logging.info(
+                "Illuminator set to %s",
+                "green (spray on)" if activate else "red (spray off)",
+            )
+        except Exception as e:
+            logging.error(f"Failed to send illuminator configure command: {e}")
 
 
 class Camera:
@@ -343,12 +384,13 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    logging.info("Starting minimal greenfield airside (embedded)")
+    logging.info("Starting airside")
 
     mav = Mavlink(MAVLINK_ADDRESS)
     camera = Camera(mode=CAMERA_MODE)
 
     spray_active = False
+    mav.send_led_spray_command(activate=False)
     last_event_time = time.time() - SPRAY_COOLDOWN_SEC
 
     while True:
@@ -368,8 +410,8 @@ def main() -> None:
         # Handle spray deactivation
         if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
             spray_active = False
+            mav.send_led_spray_command(activate=False)
             last_event_time = time.time()
-            # TODO: Deactivate sprayer
             logging.info("Spray deactivated")
 
             if SEND_TO_GROUND:
@@ -391,8 +433,8 @@ def main() -> None:
         x, y = target
         if _target_is_locked(frame, x, y):
             spray_active = True
+            mav.send_led_spray_command(activate=True)
             last_event_time = time.time()
-            # TODO: Activate sprayer
             logging.info("Spray activated")
 
 
