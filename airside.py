@@ -149,9 +149,9 @@ class Mavlink:
         if self.mav is None:
             return
 
-        command = getattr(mavutil.mavlink, "MAV_CMD_DO_ILLUMINATOR_CONFIGURE", None)
+        command = getattr(mavutil.mavlink, "MAV_CMD_ILLUMINATOR_MANUAL_CONTROL", None)
         if command is None:
-            logging.error("MAV_CMD_DO_ILLUMINATOR_CONFIGURE not available")
+            logging.error("MAV_CMD_ILLUMINATOR_MANUAL_CONTROL not available")
             return
 
         r, g, b = ILLUMINATOR_GREEN if activate else ILLUMINATOR_RED
@@ -162,13 +162,13 @@ class Mavlink:
                 self.mav.target_component,
                 command,
                 0,
+                255,
+                0,
                 r,
                 g,
                 b,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
+                0,
+                0,
             )
             logging.info(
                 "Illuminator set to %s",
