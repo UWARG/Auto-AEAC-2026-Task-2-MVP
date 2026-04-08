@@ -54,6 +54,9 @@ FIXED_DEPTH_ARDUCAM = 0.2  # Fixed depth in meters for arducam TODO: Change late
 ILLUMINATOR_RED = (255.0, 0.0, 0.0)
 ILLUMINATOR_GREEN = (0.0, 255.0, 0.0)
 
+MAV_CMD_ILLUMINATOR_ON_OFF_FALLBACK = 405
+MAV_CMD_DO_ILLUMINATOR_CONFIGURE_FALLBACK = 406
+
 class Colour:
     def __init__(
         self,
@@ -149,27 +152,64 @@ class Mavlink:
         if self.mav is None:
             return
 
-        command = getattr(mavutil.mavlink, "MAV_CMD_ILLUMINATOR_MANUAL_CONTROL", None)
-        if command is None:
-            logging.error("MAV_CMD_ILLUMINATOR_MANUAL_CONTROL not available")
-            return
-
         r, g, b = ILLUMINATOR_GREEN if activate else ILLUMINATOR_RED
 
         try:
-            self.mav.mav.command_long_send(
-                self.mav.target_system,
-                self.mav.target_component,
-                command,
-                0,
-                255,
-                0,
-                r,
-                g,
-                b,
-                0,
-                0,
+            command_manual = getattr(mavutil.mavlink, "MAV_CMD_ILLUMINATOR_MANUAL_CONTROL", None)
+            command_configure = getattr(
+                mavutil.mavlink,
+                "MAV_CMD_DO_ILLUMINATOR_CONFIGURE",
+                MAV_CMD_DO_ILLUMINATOR_CONFIGURE_FALLBACK,
             )
+            command_on_off = getattr(
+                mavutil.mavlink,
+                "MAV_CMD_ILLUMINATOR_ON_OFF",
+                MAV_CMD_ILLUMINATOR_ON_OFF_FALLBACK,
+            )
+
+            if command_manual is not None:
+                self.mav.mav.command_long_send(
+                    self.mav.target_system,
+                    self.mav.target_component,
+                    command_manual,
+                    0,
+                    255,
+                    0,
+                    r,
+                    g,
+                    b,
+                    0,
+                    0,
+                )
+            else:
+                brightness = 100.0 if activate else 0.0
+                self.mav.mav.command_long_send(
+                    self.mav.target_system,
+                    self.mav.target_component,
+                    command_configure,
+                    0,
+                    1,
+                    brightness,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+                self.mav.mav.command_long_send(
+                    self.mav.target_system,
+                    self.mav.target_component,
+                    command_on_off,
+                    0,
+                    1 if activate else 0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+
             logging.info(
                 "Illuminator set to %s",
                 "green (spray on)" if activate else "red (spray off)",
