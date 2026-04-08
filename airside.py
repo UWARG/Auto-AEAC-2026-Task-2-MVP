@@ -28,8 +28,7 @@ except ImportError:
     dai = None
 
 
-MAVLINK_ADDR = "localhost"
-MAVLINK_PORT = 14550
+MAVLINK_ADDRESS = "/dev/serial0" # "tcp:localhost:14550"
 
 ACTIVATE_SPRAY_CHANNEL = 6
 MODE_CHANGE_CHANNEL = 5
@@ -93,9 +92,8 @@ class RCChannel:
 class Mavlink:
     """Minimal MAVLink receiver for RC button states."""
 
-    def __init__(self, addr: str, port: int):
-        self.addr = addr
-        self.port = port
+    def __init__(self, address: str):
+        self.address = address
         self.mav = None
         self.rc_channels = {i: RCChannel(i, 0) for i in range(1, 10)}
         self._connect()
@@ -108,7 +106,7 @@ class Mavlink:
     def _attempt_connect(self) -> bool:
         try:
             self.mav = mavutil.mavlink_connection(
-                f"tcp:{self.addr}:{self.port}",
+                self.address,
                 baud=115200,
                 source_component=191,
             )
@@ -347,7 +345,7 @@ def main() -> None:
     )
     logging.info("Starting minimal greenfield airside (embedded)")
 
-    mav = Mavlink(MAVLINK_ADDR, MAVLINK_PORT)
+    mav = Mavlink(MAVLINK_ADDRESS)
     camera = Camera(mode=CAMERA_MODE)
 
     spray_active = False
