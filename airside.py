@@ -270,7 +270,7 @@ class Camera:
                 pass
         else:
             try:
-                data = self.bus.read_i2c_block_data(I2C_ADDR, 0x00, 6)
+                data = self.bus.read_i2c_block_data(TF_LUNA_I2C_ADDR, 0x00, 6)
                 distance = data[0] + (data[1] << 8)
 
             except Exception as e:
