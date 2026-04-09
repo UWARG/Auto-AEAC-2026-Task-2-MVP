@@ -442,8 +442,8 @@ def main() -> None:
     mav = Mavlink(MAVLINK_ADDRESS)
     camera = Camera(mode=CAMERA_MODE)
 
-    spray_active = True
-    mav.send_led_spray_command(activate=True)
+    spray_active = False
+    mav.send_led_spray_command(activate=False)
     last_event_time = time.time() - SPRAY_COOLDOWN_SEC
 
     while True:
