@@ -421,18 +421,53 @@ def _target_is_locked(frame: np.ndarray, x: float, y: float) -> bool:
     return error <= RADIUS_THRESHOLD_PX
 
 
-def _send_photo_to_ground(frame: np.ndarray, host: str, port: int) -> None:
+def _annotate_target(frame: np.ndarray, target: tuple[float, float]) -> np.ndarray:
+    """Draw the detected target on the frame."""
+    annotated = frame.copy()
+    x, y = target
+    center = (int(round(x)), int(round(y)))
+    cv2.circle(annotated, center, 18, (0, 255, 255), 3)
+    cv2.drawMarker(
+        annotated,
+        center,
+        (0, 0, 255),
+        markerType=cv2.MARKER_CROSS,
+        markerSize=24,
+        thickness=2,
+    )
+    cv2.putText(
+        annotated,
+        "target",
+        (center[0] + 20, center[1] - 20),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    return annotated
+
+
+def _send_photo_to_ground(
+    frame: np.ndarray,
+    host: str,
+    port: int,
+    label: str = "spray_confirmation",
+    target: Optional[tuple[float, float]] = None,
+) -> None:
     """Send single frame to groundside via socket."""
     try:
         logging.info("Sending photo to ground")
         with socket.create_connection((host, port), timeout=5.0) as sock:
+            if target is not None:
+                frame = _annotate_target(frame, target)
+
             success, jpeg = cv2.imencode(".jpg", frame)
             if not success:
                 logging.error("Failed to encode frame")
                 return
             
             jpeg_bytes = jpeg.tobytes()
-            label = "spray_confirmation"
             label_bytes = label.encode("utf-8")
             
             # Frame count
@@ -510,6 +545,8 @@ def main() -> None:
                 mav.send_led_spray_command(activate=True)
                 last_event_time = time.time()
                 logging.info("Spray activated")
+                if SEND_TO_GROUND:
+                    _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT, label="target_trigger", target=target)
     finally:
         camera.close()
 
