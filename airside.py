@@ -33,7 +33,7 @@ except ImportError:
 MAVLINK_ADDRESS = "/dev/serial0" # "tcp:localhost:14550"
 
 ACTIVATE_SPRAY_CHANNEL = 6
-MODE_CHANGE_CHANNEL = 5
+MODE_CHANGE_CHANNEL = 7
 
 SPRAY_DURATION_SEC = 0.5
 SPRAY_COOLDOWN_SEC = 5.0
@@ -507,8 +507,7 @@ def main() -> None:
 
             spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw > 1500
             mode_switch = mav.get_rc_channel(MODE_CHANGE_CHANNEL).raw <= 1500
-            spray_switch = True
-            mode_switch = True
+            print(f"Mode switch: {mode_switch}, Spray switch: {spray_switch}, Spray active: {spray_active}")
             delta = time.time() - last_event_time
 
             frame = camera.capture_frame()
