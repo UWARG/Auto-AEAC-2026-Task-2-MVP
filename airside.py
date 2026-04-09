@@ -497,7 +497,6 @@ def main() -> None:
                 continue
 
             target = camera.get_closest_target(frame)
-            logging.info(f"Closest target: {target}")
             if target is None:
                 continue
 
