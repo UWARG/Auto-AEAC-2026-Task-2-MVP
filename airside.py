@@ -534,7 +534,6 @@ def main() -> None:
 
             spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw > 1500
             mode_switch = mav.get_rc_channel(MODE_CHANGE_CHANNEL).raw <= 1500
-            print(f"Mode switch: {mode_switch}, Spray switch: {spray_switch}, Spray active: {spray_active}")
             delta = time.time() - last_event_time
 
             frame = camera.capture_frame()
