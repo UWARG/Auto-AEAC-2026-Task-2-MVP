@@ -48,8 +48,8 @@ MIN_AREA = 300
 MIN_CIRCULARITY = 0.6
 MIN_FILL_RATIO = 0.7
 
-SEND_TO_GROUND = False
-GROUNDSIDE_HOST = "127.0.0.1"
+SEND_TO_GROUND = True
+GROUNDSIDE_HOST = "10.241.165.133"
 GROUNDSIDE_PORT = 5005
 
 CAMERA_MODE = "arducam"  # "oakd" or "arducam"
@@ -473,6 +473,7 @@ def main() -> None:
 
             frame = camera.capture_frame()
             if frame is None:
+                logging.warning("No camera frame")
                 continue
 
             # Handle spray deactivation
@@ -491,10 +492,12 @@ def main() -> None:
                 continue
 
             wall_dist = camera.get_distance_to_wall()
+            logging.info(f"Distance to wall: {wall_dist:.2f} m")
             if wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
                 continue
 
             target = camera.get_closest_target(frame)
+            logging.info(f"Closest target: {target}")
             if target is None:
                 continue
 

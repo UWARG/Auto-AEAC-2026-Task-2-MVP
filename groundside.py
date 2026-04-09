@@ -70,7 +70,7 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    logging.info("Starting minimal greenfield groundside listener")
+    logging.info("Starting groundside listener")
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
