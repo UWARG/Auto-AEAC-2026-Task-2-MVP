@@ -157,67 +157,20 @@ class Mavlink:
         r, g, b = ILLUMINATOR_GREEN if activate else ILLUMINATOR_RED
 
         try:
-            command_manual = getattr(mavutil.mavlink, "MAV_CMD_ILLUMINATOR_MANUAL_CONTROL", None)
-            command_configure = getattr(
-                mavutil.mavlink,
-                "MAV_CMD_DO_ILLUMINATOR_CONFIGURE",
-                MAV_CMD_DO_ILLUMINATOR_CONFIGURE_FALLBACK,
+            self.mav.mav.led_control_send(
+                self.mav.target_system,
+                self.mav.target_component,
+                0,
+                255,
+                3,
+                [int(r), int(g), int(b)] + [0] * 21,
             )
-            command_on_off = getattr(
-                mavutil.mavlink,
-                "MAV_CMD_ILLUMINATOR_ON_OFF",
-                MAV_CMD_ILLUMINATOR_ON_OFF_FALLBACK,
-            )
-
-            if command_manual is not None:
-                self.mav.mav.command_long_send(
-                    self.mav.target_system,
-                    self.mav.target_component,
-                    command_manual,
-                    0,
-                    255,
-                    0,
-                    r,
-                    g,
-                    b,
-                    0,
-                    0,
-                )
-            else:
-                brightness = 100.0 if activate else 0.0
-                self.mav.mav.command_long_send(
-                    self.mav.target_system,
-                    self.mav.target_component,
-                    command_configure,
-                    0,
-                    1,
-                    brightness,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                )
-                self.mav.mav.command_long_send(
-                    self.mav.target_system,
-                    self.mav.target_component,
-                    command_on_off,
-                    0,
-                    1 if activate else 0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                )
-
             logging.info(
-                "Illuminator set to %s",
+                "LED set to %s",
                 "green (spray on)" if activate else "red (spray off)",
             )
         except Exception as e:
-            logging.error(f"Failed to send illuminator configure command: {e}")
+            logging.error(f"Failed to send command: {e}")
 
 
 class Camera:
