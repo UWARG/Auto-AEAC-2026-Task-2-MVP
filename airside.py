@@ -78,8 +78,6 @@ class Colour:
         return f"Colour(name={self.name}, lower_hsv={self.lower_hsv}, upper_hsv={self.upper_hsv})"
 
 class Colours(Enum):
-    # HSV ranges tightened for more precise detection
-    # H (Hue): 0-180, S (Saturation): 0-255, V (Value): 0-255
     RED = Colour("Red", (0, 120, 120), (10, 255, 255))
     RED2 = Colour("Red", (168, 120, 120), (180, 255, 255))
     GREEN = Colour("Green", (40, 120, 120), (80, 255, 255))
@@ -99,7 +97,7 @@ class RCChannel:
 
 
 class Mavlink:
-    """Minimal MAVLink receiver for RC button states."""
+    """MAVLink receiver for RC button states and sending Servo commands."""
 
     def __init__(self, address: str):
         self.address = address
@@ -112,6 +110,7 @@ class Mavlink:
             logging.info("Retrying MAVLink connection...")
             time.sleep(1)
 
+    @typing.no_type_check
     def _attempt_connect(self) -> bool:
         try:
             self.mav = mavutil.mavlink_connection(
@@ -119,7 +118,7 @@ class Mavlink:
                 baud=115200,
                 source_component=191,
             )
-            self.mav.wait_heartbeat()  # type: ignore
+            self.mav.wait_heartbeat()
             logging.info("MAVLink connected")
             return True
         except Exception as e:
@@ -179,12 +178,17 @@ class Camera:
 
     def __init__(self, mode: str = "oakd"):
         self.mode = mode
-        self._oakd_device = None
+
+        self._oakd = None
+        self._oakd_rgb_queue = None
         self._oakd_depth_queue = None
+
         self._webcam = None
-        self.bus = None
+        self._tf_luna_bus = None
+
         self._latest_frame: Optional[np.ndarray] = None
         self._latest_depth_m: Optional[float] = None
+
         self._frame_lock = threading.Lock()
         self._depth_lock = threading.Lock()
         self._frame_thread_stop = threading.Event()
@@ -196,7 +200,7 @@ class Camera:
             self._init_oakd()
         elif mode == "arducam":
             self._init_arducam()
-            self.bus = smbus2.SMBus(1)
+            self._tf_luna_bus = smbus2.SMBus(1)
         else:
             raise ValueError(f"Unknown camera mode: {mode}")
 
@@ -236,12 +240,12 @@ class Camera:
             xout_rgb.setStreamName("rgb")
             rgb.preview.link(xout_rgb.input)
 
-            self._oakd_device = dai.Device(pipeline)
-            self._oakd_depth_queue = self._oakd_device.getOutputQueue(
-                "depth", maxSize=1, blocking=False
-            )
-            self._oakd_rgb_queue = self._oakd_device.getOutputQueue(
+            self._oakd = dai.Device(pipeline)
+            self._oakd_rgb_queue = self._oakd.getOutputQueue(
                 "rgb", maxSize=1, blocking=False
+            )
+            self._oakd_depth_queue = self._oakd.getOutputQueue(
+                "depth", maxSize=1, blocking=False
             )
             logging.info("OAK-D initialized")
         except Exception as e:
@@ -273,54 +277,52 @@ class Camera:
 
     def _frame_reader_loop(self) -> None:
         while not self._frame_thread_stop.is_set():
+            time.sleep(0.005)
             frame = None
 
-            if self.mode == "oakd":
-                try:
-                    in_rgb = self._oakd_rgb_queue.tryGet()
-                    frame = in_rgb.getCvFrame() if in_rgb else None
-                except Exception:
-                    frame = None
-            else:
-                if self._webcam is not None:
-                    ret, captured = self._webcam.read()
-                    frame = captured if ret else None
+            try:
+                if self.mode == "oakd":
+                    if self._oakd_rgb_queue is not None:
+                        in_rgb = self._oakd_rgb_queue.tryGet()
+                        frame = in_rgb.getCvFrame() if in_rgb else None
+                else:
+                    if self._webcam is not None:
+                        ret, captured = self._webcam.read()
+                        frame = captured if ret else None
+            except Exception as e:
+                logging.error(f"Error occurred while reading frame: {e}")
 
             if frame is not None:
                 with self._frame_lock:
                     self._latest_frame = frame
-            else:
-                time.sleep(0.005)
 
     def _depth_reader_loop(self) -> None:
         while not self._depth_thread_stop.is_set():
+            time.sleep(0.005)
             depth_m = None
 
-            if self.mode == "oakd":
-                try:
+            try:
+                if self.mode == "oakd":
                     depth_queue = self._oakd_depth_queue
-                    if depth_queue is not None:
-                        depth_message = depth_queue.tryGet()
-                        if depth_message is not None:
-                            depth_frame = depth_message.getFrame()
-                            valid = depth_frame[depth_frame > 0]
-                            if valid.size > 0:
-                                depth_m = float(np.min(valid)) / 1000.0
-                except Exception:
-                    depth_m = None
-            else:
-                if self.bus is not None:
-                    try:
-                        data = self.bus.read_i2c_block_data(TF_LUNA_I2C_ADDR, 0x00, 6)
+                    if depth_queue is None:
+                        continue
+                    depth_message = depth_queue.tryGet()
+                    if depth_message is None:
+                        continue
+                    depth_frame = depth_message.getFrame()
+                    valid = depth_frame[depth_frame > 0]
+                    if valid.size > 0:
+                        depth_m = float(np.min(valid)) / 1000.0
+                else:
+                    if self._tf_luna_bus is not None:
+                        data = self._tf_luna_bus.read_i2c_block_data(TF_LUNA_I2C_ADDR, 0x00, 6)
                         depth_m = float(data[0] + (data[1] << 8)) / 100.0
-                    except Exception as e:
-                        logging.error(f"Failed to read from TF-Luna: {e}")
+            except Exception as e:
+                logging.error(f"Error occurred while reading depth: {e}")
 
             if depth_m is not None and depth_m > 0:
                 with self._depth_lock:
                     self._latest_depth_m = depth_m
-            else:
-                time.sleep(0.01)
 
     def close(self) -> None:
         self._frame_thread_stop.set()
@@ -333,8 +335,8 @@ class Camera:
         if self._webcam is not None:
             self._webcam.release()
 
-        if self._oakd_device is not None:
-            self._oakd_device.close()
+        if self._oakd is not None:
+            self._oakd.close()
 
     @typing.no_type_check
     def capture_frame(self) -> Optional[np.ndarray]:
@@ -342,7 +344,9 @@ class Camera:
         with self._frame_lock:
             if self._latest_frame is None:
                 return None
-            return self._latest_frame.copy()
+            latest_frame = self._latest_frame.copy()
+            self._latest_frame = None
+            return latest_frame
 
     @typing.no_type_check
     def get_distance_to_wall(self) -> float:
@@ -354,7 +358,7 @@ class Camera:
             return self._latest_depth_m
 
     def get_closest_target(self, frame: np.ndarray) -> Optional[tuple[float, float]]:
-        """Detect colored circular targets and return the closest one to center offset."""
+        """Detect targets and return the closest one to center offset."""
         
         if frame is None:
             return None
@@ -420,6 +424,7 @@ def _target_is_locked(frame: np.ndarray, x: float, y: float) -> bool:
 def _send_photo_to_ground(frame: np.ndarray, host: str, port: int) -> None:
     """Send single frame to groundside via socket."""
     try:
+        logging.info("Sending photo to ground")
         with socket.create_connection((host, port), timeout=5.0) as sock:
             success, jpeg = cv2.imencode(".jpg", frame)
             if not success:
@@ -427,7 +432,7 @@ def _send_photo_to_ground(frame: np.ndarray, host: str, port: int) -> None:
                 return
             
             jpeg_bytes = jpeg.tobytes()
-            label = "FORWARD"
+            label = "spray_confirmation"
             label_bytes = label.encode("utf-8")
             
             # Frame count
