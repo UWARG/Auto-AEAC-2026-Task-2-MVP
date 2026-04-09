@@ -478,7 +478,6 @@ def main() -> None:
 
             frame = camera.capture_frame()
             if frame is None:
-                logging.warning("No camera frame")
                 continue
 
             # Handle spray deactivation
@@ -497,11 +496,11 @@ def main() -> None:
                 continue
 
             wall_dist = camera.get_distance_to_wall()
-            logging.info(f"Distance to wall: {wall_dist:.2f} m")
             if wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
                 continue
 
             target = camera.get_closest_target(frame)
+            print(f"Closest target: {target}")
             if target is None:
                 continue
 
