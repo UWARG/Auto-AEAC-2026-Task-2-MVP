@@ -536,10 +536,6 @@ def main() -> None:
             mode_switch = mav.get_rc_channel(MODE_CHANGE_CHANNEL).raw <= 1500
             delta = time.time() - last_event_time
 
-            frame = camera.capture_frame()
-            if frame is None:
-                continue
-
             # Handle spray deactivation
             if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
                 spray_active = False
@@ -548,7 +544,18 @@ def main() -> None:
                 logging.info("Spray deactivated")
 
                 if SEND_TO_GROUND:
-                    _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT)
+                    attempts = 0
+                    while attempts < 30:
+                        frame = camera.capture_frame()
+                        if frame is not None:
+                            _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT)
+                            break
+                        attempts += 1
+                        continue
+                continue
+
+            frame = camera.capture_frame()
+            if frame is None:
                 continue
 
             # Check all conditions for spray activation
