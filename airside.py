@@ -312,7 +312,7 @@ class Camera:
                 if self.bus is not None:
                     try:
                         data = self.bus.read_i2c_block_data(TF_LUNA_I2C_ADDR, 0x00, 6)
-                        depth_m = float(data[0] + (data[1] << 8))
+                        depth_m = float(data[0] + (data[1] << 8)) / 1000.0
                     except Exception as e:
                         logging.error(f"Failed to read from TF-Luna: {e}")
 
