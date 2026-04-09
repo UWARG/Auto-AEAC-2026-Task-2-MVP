@@ -17,6 +17,7 @@ import smbus2
 from dataclasses import dataclass
 from typing import Optional
 import typing
+import threading
 
 import cv2
 import numpy as np
@@ -182,6 +183,14 @@ class Camera:
         self._oakd_depth_queue = None
         self._webcam = None
         self.bus = None
+        self._latest_frame: Optional[np.ndarray] = None
+        self._latest_depth_m: Optional[float] = None
+        self._frame_lock = threading.Lock()
+        self._depth_lock = threading.Lock()
+        self._frame_thread_stop = threading.Event()
+        self._depth_thread_stop = threading.Event()
+        self._frame_thread = None
+        self._depth_thread = None
 
         if mode == "oakd":
             self._init_oakd()
@@ -190,6 +199,9 @@ class Camera:
             self.bus = smbus2.SMBus(1)
         else:
             raise ValueError(f"Unknown camera mode: {mode}")
+
+        self._start_frame_reader()
+        self._start_depth_reader()
 
     @typing.no_type_check
     def _init_oakd(self) -> None:
@@ -242,57 +254,104 @@ class Camera:
             raise RuntimeError("Failed to open Arducam")
         self._webcam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self._webcam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self._webcam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         logging.info("Arducam initialized")
+
+    def _start_frame_reader(self) -> None:
+        self._frame_thread = threading.Thread(
+            target=self._frame_reader_loop,
+            daemon=True,
+        )
+        self._frame_thread.start()
+
+    def _start_depth_reader(self) -> None:
+        self._depth_thread = threading.Thread(
+            target=self._depth_reader_loop,
+            daemon=True,
+        )
+        self._depth_thread.start()
+
+    def _frame_reader_loop(self) -> None:
+        while not self._frame_thread_stop.is_set():
+            frame = None
+
+            if self.mode == "oakd":
+                try:
+                    in_rgb = self._oakd_rgb_queue.tryGet()
+                    frame = in_rgb.getCvFrame() if in_rgb else None
+                except Exception:
+                    frame = None
+            else:
+                if self._webcam is not None:
+                    ret, captured = self._webcam.read()
+                    frame = captured if ret else None
+
+            if frame is not None:
+                with self._frame_lock:
+                    self._latest_frame = frame
+            else:
+                time.sleep(0.005)
+
+    def _depth_reader_loop(self) -> None:
+        while not self._depth_thread_stop.is_set():
+            depth_m = None
+
+            if self.mode == "oakd":
+                try:
+                    depth_queue = self._oakd_depth_queue
+                    if depth_queue is not None:
+                        depth_message = depth_queue.tryGet()
+                        if depth_message is not None:
+                            depth_frame = depth_message.getFrame()
+                            valid = depth_frame[depth_frame > 0]
+                            if valid.size > 0:
+                                depth_m = float(np.min(valid)) / 1000.0
+                except Exception:
+                    depth_m = None
+            else:
+                if self.bus is not None:
+                    try:
+                        data = self.bus.read_i2c_block_data(TF_LUNA_I2C_ADDR, 0x00, 6)
+                        depth_m = float(data[0] + (data[1] << 8))
+                    except Exception as e:
+                        logging.error(f"Failed to read from TF-Luna: {e}")
+
+            if depth_m is not None and depth_m > 0:
+                with self._depth_lock:
+                    self._latest_depth_m = depth_m
+            else:
+                time.sleep(0.01)
+
+    def close(self) -> None:
+        self._frame_thread_stop.set()
+        self._depth_thread_stop.set()
+        if self._frame_thread is not None:
+            self._frame_thread.join(timeout=1.0)
+        if self._depth_thread is not None:
+            self._depth_thread.join(timeout=1.0)
+
+        if self._webcam is not None:
+            self._webcam.release()
+
+        if self._oakd_device is not None:
+            self._oakd_device.close()
 
     @typing.no_type_check
     def capture_frame(self) -> Optional[np.ndarray]:
         """Capture RGB frame."""
-        if self.mode == "oakd":
-            try:
-                in_rgb = self._oakd_rgb_queue.get()
-                return in_rgb.getCvFrame() if in_rgb else None
-            except Exception:
+        with self._frame_lock:
+            if self._latest_frame is None:
                 return None
-        else:
-            ret, frame = self._webcam.read()
-            return frame if ret else None
+            return self._latest_frame.copy()
 
     @typing.no_type_check
     def get_distance_to_wall(self) -> float:
         """Get the minimum distance to a wall."""
-        depth_frame = None
-
-        if self.mode == "oakd":
-            try:
-                depth_message = self._oakd_depth_queue.get()
-                depth_frame = depth_message.getFrame() if depth_message else None
-            except Exception:
-                pass
-        else:
-            try:
-                data = self.bus.read_i2c_block_data(TF_LUNA_I2C_ADDR, 0x00, 6)
-                distance = data[0] + (data[1] << 8)
-
-            except Exception as e:
-                logging.error(f"Failed to read from TF-Luna: {e}")
-                return 100.0
-            
-            depth_frame = np.full((1, 1), distance, dtype=np.float32)
-
-        if depth_frame is None:
-            logging.error("Failed to get depth frame")
-            return 100.0
-        
-        valid = depth_frame[depth_frame > 0]
-        if valid.size == 0:
-            logging.warning("No valid depth pixels found")
-            return 100.0
-        
-        min_depth = float(np.min(valid))
-        # OAK-D returns millimeters; arducam returns meters directly
-        if self.mode == "oakd":
-            return min_depth / 1000.0
-        return min_depth
+        with self._depth_lock:
+            if self._latest_depth_m is None:
+                logging.warning("No cached depth available")
+                return 0.0
+            return self._latest_depth_m
 
     def get_closest_target(self, frame: np.ndarray) -> Optional[tuple[float, float]]:
         """Detect colored circular targets and return the closest one to center offset."""
@@ -395,55 +454,58 @@ def main() -> None:
     mav = Mavlink(MAVLINK_ADDRESS)
     camera = Camera(mode=CAMERA_MODE)
 
-    spray_active = False
-    mav.send_led_spray_command(activate=False)
-    last_event_time = time.time() - SPRAY_COOLDOWN_SEC
+    try:
+        spray_active = False
+        mav.send_led_spray_command(activate=False)
+        last_event_time = time.time() - SPRAY_COOLDOWN_SEC
 
-    while True:
-        time.sleep(0.02)
+        while True:
+            time.sleep(0.02)
 
-        while mav.process_data_stream():
-            pass
+            while mav.process_data_stream():
+                pass
 
-        frame = camera.capture_frame()
-        if frame is None:
-            continue
+            spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw > 1500
+            mode_switch = mav.get_rc_channel(MODE_CHANGE_CHANNEL).raw <= 1500
+            spray_switch = True
+            mode_switch = True
+            delta = time.time() - last_event_time
 
-        spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw > 1500
-        mode_switch = mav.get_rc_channel(MODE_CHANGE_CHANNEL).raw <= 1500
-        spray_switch = True
-        mode_switch = True
-        delta = time.time() - last_event_time
+            frame = camera.capture_frame()
+            if frame is None:
+                continue
 
-        # Handle spray deactivation
-        if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
-            spray_active = False
-            mav.send_led_spray_command(activate=False)
-            last_event_time = time.time()
-            logging.info("Spray deactivated")
+            # Handle spray deactivation
+            if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
+                spray_active = False
+                mav.send_led_spray_command(activate=False)
+                last_event_time = time.time()
+                logging.info("Spray deactivated")
 
-            if SEND_TO_GROUND:
-                _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT)
-            continue
+                if SEND_TO_GROUND:
+                    _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT)
+                continue
 
-        # Check all conditions for spray activation
-        if not (mode_switch and spray_switch and delta >= SPRAY_COOLDOWN_SEC):
-            continue
+            # Check all conditions for spray activation
+            if not (mode_switch and spray_switch and delta >= SPRAY_COOLDOWN_SEC):
+                continue
 
-        wall_dist = camera.get_distance_to_wall()
-        if wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
-            continue
+            wall_dist = camera.get_distance_to_wall()
+            if wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
+                continue
 
-        target = camera.get_closest_target(frame)
-        if target is None:
-            continue
+            target = camera.get_closest_target(frame)
+            if target is None:
+                continue
 
-        x, y = target
-        if _target_is_locked(frame, x, y):
-            spray_active = True
-            mav.send_led_spray_command(activate=True)
-            last_event_time = time.time()
-            logging.info("Spray activated")
+            x, y = target
+            if _target_is_locked(frame, x, y):
+                spray_active = True
+                mav.send_led_spray_command(activate=True)
+                last_event_time = time.time()
+                logging.info("Spray activated")
+    finally:
+        camera.close()
 
 
 if __name__ == "__main__":
