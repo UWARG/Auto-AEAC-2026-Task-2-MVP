@@ -32,8 +32,7 @@ except ImportError:
 
 MAVLINK_ADDRESS = "/dev/serial0" # "tcp:localhost:14550"
 
-ACTIVATE_SPRAY_CHANNEL = 6
-MODE_CHANGE_CHANNEL = 7
+ACTIVATE_SPRAY_CHANNEL = 9
 RC_MESSAGE_RATE_HZ = 20
 
 SPRAY_DURATION_SEC = 0.5
@@ -532,8 +531,7 @@ def main() -> None:
             while mav.process_data_stream():
                 pass
 
-            spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw > 1500
-            mode_switch = mav.get_rc_channel(MODE_CHANGE_CHANNEL).raw <= 1500
+            spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw >= 1500
             delta = time.time() - last_event_time
 
             # Handle spray deactivation
@@ -559,7 +557,7 @@ def main() -> None:
                 continue
 
             # Check all conditions for spray activation
-            if not (mode_switch and spray_switch and delta >= SPRAY_COOLDOWN_SEC):
+            if not (spray_switch and delta >= SPRAY_COOLDOWN_SEC):
                 continue
 
             wall_dist = camera.get_distance_to_wall()
