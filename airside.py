@@ -42,8 +42,6 @@ RADIUS_THRESHOLD_PX = 100
 TARGET_CENTER_POSITION_PX = (0, 0)
 DISTANCE_TO_WALL_THRESHOLD_M = 1.8
 
-TF_LUNA_I2C_ADDR = 0x10
-
 MIN_AREA = 300
 MIN_CIRCULARITY = 0.6
 MIN_FILL_RATIO = 0.7
@@ -52,13 +50,10 @@ SEND_TO_GROUND = True
 GROUNDSIDE_HOST = "10.241.165.133"
 GROUNDSIDE_PORT = 5005
 
+MOVE_FORWARD = True
+FORWARD_SPEED_M_S = 1.0
+
 CAMERA_MODE = "arducam"  # "oakd" or "arducam"
-
-ILLUMINATOR_RED = (255.0, 0.0, 0.0)
-ILLUMINATOR_GREEN = (0.0, 255.0, 0.0)
-
-MAV_CMD_ILLUMINATOR_ON_OFF_FALLBACK = 405
-MAV_CMD_DO_ILLUMINATOR_CONFIGURE_FALLBACK = 406
 
 class Colour:
     def __init__(
@@ -169,9 +164,47 @@ class Mavlink:
 
     def get_rc_channel(self, channel: int) -> RCChannel:
         return self.rc_channels.get(channel, RCChannel(channel, 0))
+
+    @typing.no_type_check
+    def send_forward_velocity(self, forward_speed_m_s: float) -> None:
+        if self.mav is None:
+            return
+
+        type_mask = (
+            mavutil.mavlink.POSITION_TARGET_TYPEMASK_X_IGNORE
+            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_Y_IGNORE
+            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_Z_IGNORE
+            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE
+            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE
+            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE
+            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE
+            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
+        )
+
+        try:
+            self.mav.mav.set_position_target_local_ned_send(
+                0,
+                self.mav.target_system,
+                self.mav.target_component,
+                mavutil.mavlink.MAV_FRAME_BODY_NED,
+                type_mask,
+                0,
+                0,
+                0,
+                forward_speed_m_s,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            )
+        except Exception as e:
+            logging.error("Failed to send forward velocity: %s", e)
     
     @typing.no_type_check
-    def send_led_spray_command(self, activate: bool) -> None:
+    def send_spray_command(self, activate: bool) -> None:
         """
         Sets the leds to match the sprayer's state.
 
@@ -180,7 +213,7 @@ class Mavlink:
         if self.mav is None:
             return
 
-        r, g, b = ILLUMINATOR_GREEN if activate else ILLUMINATOR_RED
+        r, g, b = (0.0, 255.0, 0.0) if activate else (255.0, 0.0, 0.0)
 
         try:
             self.mav.mav.led_control_send(
@@ -341,7 +374,7 @@ class Camera:
                         depth_m = float(np.min(valid)) / 1000.0
                 else:
                     if self._tf_luna_bus is not None:
-                        data = self._tf_luna_bus.read_i2c_block_data(TF_LUNA_I2C_ADDR, 0x00, 6)
+                        data = self._tf_luna_bus.read_i2c_block_data(0x10, 0x00, 6)
                         depth_m = float(data[0] + (data[1] << 8)) / 100.0
             except Exception as e:
                 logging.error(f"Error occurred while reading depth: {e}")
@@ -509,6 +542,11 @@ def _send_photo_to_ground(
     except Exception as e:
         logging.error(f"Failed to send photo: {e}")
 
+def _stop_forward_velocity(mav: Mavlink, forward_velocity_active: bool):
+    if forward_velocity_active:
+        mav.send_forward_velocity(0.0)
+        forward_velocity_active = False
+        logging.info("Forward motion stopped")
 
 def main() -> None:
     logging.basicConfig(
@@ -522,7 +560,8 @@ def main() -> None:
 
     try:
         spray_active = False
-        mav.send_led_spray_command(activate=False)
+        forward_velocity_active = False
+        mav.send_spray_command(activate=False)
         last_event_time = time.time() - SPRAY_COOLDOWN_SEC
 
         while True:
@@ -534,10 +573,13 @@ def main() -> None:
             spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw >= 1500
             delta = time.time() - last_event_time
 
+            if not spray_switch:
+                _stop_forward_velocity(mav, forward_velocity_active)
+
             # Handle spray deactivation
             if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
                 spray_active = False
-                mav.send_led_spray_command(activate=False)
+                mav.send_spray_command(activate=False)
                 last_event_time = time.time()
                 logging.info("Spray deactivated")
 
@@ -558,24 +600,35 @@ def main() -> None:
 
             # Check all conditions for spray activation
             if not (spray_switch and delta >= SPRAY_COOLDOWN_SEC):
+                _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             wall_dist = camera.get_distance_to_wall()
             if wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
+                _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             target = camera.get_closest_target(frame)
             if target is None:
+                _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             x, y = target
             if _target_is_locked(frame, x, y):
+                _stop_forward_velocity(mav, forward_velocity_active)
                 spray_active = True
-                mav.send_led_spray_command(activate=True)
+                mav.send_spray_command(activate=True)
                 last_event_time = time.time()
                 logging.info("Spray activated")
                 if SEND_TO_GROUND:
                     _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT, label="target_trigger", target=target)
+            elif MOVE_FORWARD:
+                mav.send_forward_velocity(FORWARD_SPEED_M_S)
+                if not forward_velocity_active:
+                    forward_velocity_active = True
+                    logging.info("Forward motion active")
+            else:
+                _stop_forward_velocity(mav, forward_velocity_active)
     finally:
         camera.close()
 
