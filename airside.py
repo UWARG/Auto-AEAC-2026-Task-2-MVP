@@ -110,6 +110,7 @@ class Mavlink:
             self.mav = mavutil.mavlink_connection(
                 self.address,
                 dialect="ardupilotmega",
+                baud=57600,
                 source_component=191,
             )
             logging.info("Waiting for MAVLink heartbeat...")
