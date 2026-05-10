@@ -130,43 +130,28 @@ class Mavlink:
     @typing.no_type_check
     def _configure_rc_stream(self) -> None:
         """Ask FC to publish RC channels at a fixed rate."""
-        if self.mav is None:
-            return
+        pass
+        # if self.mav is None:
+        #     return
 
-        interval_us = int(1_000_000 / RC_MESSAGE_RATE_HZ)
-        try:
-            self.mav.mav.command_long_send(
-                self.mav.target_system,
-                self.mav.target_component,
-                mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
-                0,
-                mavutil.mavlink.MAVLINK_MSG_ID_RC_CHANNELS,
-                interval_us,
-                0,
-                0,
-                0,
-                0,
-                0,
-            )
-            logging.info("Requested RC_CHANNELS stream at %d Hz", RC_MESSAGE_RATE_HZ)
-        except Exception as e:
-            logging.warning("Failed to request RC stream explicitly: %s", e)
-
-        # Legacy subscription path
-        try:
-            self.mav.mav.request_data_stream_send(
-                self.mav.target_system,
-                self.mav.target_component,
-                mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS,
-                RC_MESSAGE_RATE_HZ,
-                1,
-            )
-            logging.info(
-                "Requested legacy RC stream via MAV_DATA_STREAM_RC_CHANNELS at %d Hz",
-                RC_MESSAGE_RATE_HZ,
-            )
-        except Exception as e:
-            logging.warning("Failed legacy RC stream request: %s", e)
+        # interval_us = int(1_000_000 / RC_MESSAGE_RATE_HZ)
+        # try:
+        #     self.mav.mav.command_long_send(
+        #         self.mav.target_system,
+        #         self.mav.target_component,
+        #         mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+        #         0,
+        #         mavutil.mavlink.MAVLINK_MSG_ID_RC_CHANNELS,
+        #         interval_us,
+        #         0,
+        #         0,
+        #         0,
+        #         0,
+        #         0,
+        #     )
+        #     logging.info("Requested RC_CHANNELS stream at %d Hz", RC_MESSAGE_RATE_HZ)
+        # except Exception as e:
+        #     logging.warning("Failed to request RC stream explicitly: %s", e)
 
     def process_data_stream(self) -> bool:
         """Process one MAVLink message. Returns True if message was processed."""
