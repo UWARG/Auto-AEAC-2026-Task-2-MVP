@@ -109,7 +109,7 @@ class Mavlink:
             logging.info(f"Connecting to MAVLink at {self.address}...")
             self.mav = mavutil.mavlink_connection(
                 self.address,
-                baud=115200,
+                dialect="ardupilotmega",
                 source_component=191,
             )
             logging.info("Waiting for MAVLink heartbeat...")
