@@ -50,9 +50,6 @@ SEND_TO_GROUND = True
 GROUNDSIDE_HOST = "10.241.165.133"
 GROUNDSIDE_PORT = 5005
 
-MOVE_FORWARD = True
-FORWARD_SPEED_M_S = 1.0
-
 CAMERA_MODE = "arducam"  # "oakd" or "arducam"
 
 class Colour:
@@ -165,44 +162,6 @@ class Mavlink:
     def get_rc_channel(self, channel: int) -> RCChannel:
         return self.rc_channels.get(channel, RCChannel(channel, 0))
 
-    @typing.no_type_check
-    def send_forward_velocity(self, forward_speed_m_s: float) -> None:
-        if self.mav is None:
-            return
-
-        type_mask = (
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_X_IGNORE
-            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_Y_IGNORE
-            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_Z_IGNORE
-            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE
-            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE
-            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE
-            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE
-            | mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
-        )
-
-        try:
-            self.mav.mav.set_position_target_local_ned_send(
-                0,
-                self.mav.target_system,
-                self.mav.target_component,
-                mavutil.mavlink.MAV_FRAME_BODY_NED,
-                type_mask,
-                0,
-                0,
-                0,
-                forward_speed_m_s,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-            )
-        except Exception as e:
-            logging.error("Failed to send forward velocity: %s", e)
-    
     @typing.no_type_check
     def send_spray_command(self, activate: bool) -> None:
         """
@@ -546,12 +505,6 @@ def _send_photo_to_ground(
     except Exception as e:
         logging.error(f"Failed to send photo: {e}")
 
-def _stop_forward_velocity(mav: Mavlink, forward_velocity_active: bool):
-    if forward_velocity_active:
-        mav.send_forward_velocity(0.0)
-        forward_velocity_active = False
-        logging.info("Forward motion stopped")
-
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -564,7 +517,6 @@ def main() -> None:
 
     try:
         spray_active = False
-        forward_velocity_active = False
         mav.send_spray_command(activate=False)
         last_event_time = time.time() - SPRAY_COOLDOWN_SEC
 
@@ -576,9 +528,6 @@ def main() -> None:
 
             spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw >= 1500
             delta = time.time() - last_event_time
-
-            if not spray_switch:
-                _stop_forward_velocity(mav, forward_velocity_active)
 
             # Handle spray deactivation
             if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
@@ -604,35 +553,24 @@ def main() -> None:
 
             # Check all conditions for spray activation
             if not (spray_switch and delta >= SPRAY_COOLDOWN_SEC):
-                _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             wall_dist = camera.get_distance_to_wall()
             if wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
-                _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             target = camera.get_closest_target(frame)
             if target is None:
-                _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             x, y = target
             if _target_is_locked(frame, x, y):
-                _stop_forward_velocity(mav, forward_velocity_active)
                 spray_active = True
                 mav.send_spray_command(activate=True)
                 last_event_time = time.time()
                 logging.info("Spray activated")
                 if SEND_TO_GROUND:
                     _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT, label="target_trigger", target=target)
-            elif MOVE_FORWARD:
-                mav.send_forward_velocity(FORWARD_SPEED_M_S)
-                if not forward_velocity_active:
-                    forward_velocity_active = True
-                    logging.info("Forward motion active")
-            else:
-                _stop_forward_velocity(mav, forward_velocity_active)
     finally:
         camera.close()
 
