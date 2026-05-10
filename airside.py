@@ -8,6 +8,7 @@ Behavior:
 - Optionally send one spray confirmation photo to groundside after spray deactivation.
 """
 
+import argparse
 from enum import Enum
 import logging
 import socket
@@ -47,8 +48,8 @@ MIN_CIRCULARITY = 0.6
 MIN_FILL_RATIO = 0.7
 
 SEND_TO_GROUND = True
-GROUNDSIDE_HOST = "10.241.165.133"
-GROUNDSIDE_PORT = 5005
+DEFAULT_GROUNDSIDE_HOST = "127.0.0.1"
+DEFAULT_GROUNDSIDE_PORT = 5005
 
 CAMERA_MODE = "arducam"  # "oakd" or "arducam"
 
@@ -505,7 +506,27 @@ def _send_photo_to_ground(
     except Exception as e:
         logging.error(f"Failed to send photo: {e}")
 
-def main() -> None:
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Airside target detection and spray control")
+    parser.add_argument(
+        "--groundside-host",
+        default=DEFAULT_GROUNDSIDE_HOST,
+        help="Groundside receiver hostname or IP address",
+    )
+    parser.add_argument(
+        "--groundside-port",
+        type=int,
+        default=DEFAULT_GROUNDSIDE_PORT,
+        help="Groundside receiver TCP port",
+    )
+    return parser.parse_args()
+
+
+def main(
+    groundside_host: str = DEFAULT_GROUNDSIDE_HOST,
+    groundside_port: int = DEFAULT_GROUNDSIDE_PORT,
+) -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
@@ -541,7 +562,7 @@ def main() -> None:
                     while attempts < 30:
                         frame = camera.capture_frame()
                         if frame is not None:
-                            _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT)
+                            _send_photo_to_ground(frame, groundside_host, groundside_port)
                             break
                         attempts += 1
                         continue
@@ -570,13 +591,14 @@ def main() -> None:
                 last_event_time = time.time()
                 logging.info("Spray activated")
                 if SEND_TO_GROUND:
-                    _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT, label="target_trigger", target=target)
+                    _send_photo_to_ground(frame, groundside_host, groundside_port, label="target_trigger", target=target)
     finally:
         camera.close()
 
 
 if __name__ == "__main__":
     try:
-        main()
+        args = _parse_args()
+        main(args.groundside_host, args.groundside_port)
     except KeyboardInterrupt:
         logging.info("Interrupted, shutting down")
