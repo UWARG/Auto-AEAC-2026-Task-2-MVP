@@ -153,7 +153,7 @@ class Mavlink:
         if msg is None:
             return False
 
-        for ch in range(1, 9):
+        for ch in self.rc_channels:
             attr = f"chan{ch}_raw"
             if hasattr(msg, attr):
                 raw = getattr(msg, attr) or 0
@@ -184,9 +184,14 @@ class Mavlink:
             #     3,
             #     [int(r), int(g), int(b)] + [0] * 21,
             # )
+            status_text = (
+                ("SPRAY ON" if activate else "SPRAY OFF")
+                + " at: "
+                + time.strftime("%H:%M:%S")
+            )
             self.mav.mav.statustext_send(
                 mavutil.mavlink.MAV_SEVERITY_CRITICAL,
-                b(("SPRAY ON" if activate else "SPRAY OFF") + "at: " + time.strftime("%H:%M:%S")),
+                status_text.encode("utf-8"),
             )
             logging.info(
                 "LED set to %s",
@@ -559,13 +564,13 @@ def main(
 
                 if SEND_TO_GROUND:
                     attempts = 0
-                    while attempts < 30:
+                    while attempts < 100:
                         frame = camera.capture_frame()
                         if frame is not None:
                             _send_photo_to_ground(frame, groundside_host, groundside_port)
                             break
                         attempts += 1
-                        continue
+                        time.sleep(0.02)
                 continue
 
             frame = camera.capture_frame()
@@ -577,7 +582,7 @@ def main(
                 continue
 
             wall_dist = camera.get_distance_to_wall()
-            if wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
+            if wall_dist <= 0 or wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
                 continue
 
             target = camera.get_closest_target(frame)
