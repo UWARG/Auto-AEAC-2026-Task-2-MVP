@@ -283,20 +283,17 @@ class Camera:
             mono_left.out.link(stereo.left)
             mono_right.out.link(stereo.right)
 
-            xout_rgb = pipeline.createXLinkOut()
-            xout_depth = pipeline.createXLinkOut()
-            xout_rgb.setStreamName("rgb")
-            xout_depth.setStreamName("depth")
-            rgb.preview.link(xout_rgb.input)
-            stereo.depth.link(xout_depth.input)
+            self._oakd_rgb_queue = rgb.preview.createOutputQueue(
+                maxSize=1,
+                blocking=False,
+            )
+            self._oakd_depth_queue = stereo.depth.createOutputQueue(
+                maxSize=1,
+                blocking=False,
+            )
 
-            self._oakd = dai.Device(pipeline)
-            self._oakd_rgb_queue = self._oakd.getOutputQueue(
-                "rgb", maxSize=1, blocking=False
-            )
-            self._oakd_depth_queue = self._oakd.getOutputQueue(
-                "depth", maxSize=1, blocking=False
-            )
+            pipeline.start()
+            self._oakd = pipeline
             logging.info("OAK-D initialized")
         except Exception as e:
             logging.error(f"Failed to initialize OAK-D: {e}")
