@@ -52,6 +52,7 @@ GROUNDSIDE_PORT = 5005
 
 MOVE_FORWARD = True
 FORWARD_SPEED_M_S = 1.0
+GUIDED_MODE_NAME = "GUIDED"
 
 CAMERA_MODE = "arducam"  # "oakd" or "arducam"
 
@@ -98,6 +99,8 @@ class Mavlink:
         self.address = address
         self.mav = None
         self.rc_channels = {i: RCChannel(i, 0) for i in range(1, 10)}
+        self.current_mode_name: Optional[str] = None
+        self._last_heartbeat_sent_s = 0.0
         self._connect()
 
     def _connect(self) -> None:
@@ -151,9 +154,16 @@ class Mavlink:
         if self.mav is None:
             return False
 
-        msg = self.mav.recv_match(type=["RC_CHANNELS", "RC_CHANNELS_RAW"], blocking=False)
+        msg = self.mav.recv_match(
+            type=["HEARTBEAT", "RC_CHANNELS", "RC_CHANNELS_RAW"],
+            blocking=False,
+        )
         if msg is None:
             return False
+
+        if msg.get_type() == "HEARTBEAT":
+            self.current_mode_name = self._get_mode_name(msg)
+            return True
 
         for ch in range(1, 9):
             attr = f"chan{ch}_raw"
@@ -161,6 +171,42 @@ class Mavlink:
                 raw = getattr(msg, attr) or 0
                 self.rc_channels[ch] = RCChannel(ch, raw)
         return True
+
+    @typing.no_type_check
+    def _get_mode_name(self, heartbeat_msg) -> Optional[str]:
+        if self.mav is None:
+            return None
+
+        mode_map = self.mav.mode_mapping()
+        if not mode_map:
+            return None
+
+        reverse_mode_map = {value: key for key, value in mode_map.items()}
+        return reverse_mode_map.get(heartbeat_msg.custom_mode)
+
+    def is_guided_mode(self) -> bool:
+        return self.current_mode_name == GUIDED_MODE_NAME
+
+    @typing.no_type_check
+    def send_companion_heartbeat(self) -> None:
+        if self.mav is None:
+            return
+
+        now = time.time()
+        if now - self._last_heartbeat_sent_s < 1.0:
+            return
+
+        try:
+            self.mav.mav.heartbeat_send(
+                mavutil.mavlink.MAV_TYPE_GCS,
+                mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+                0,
+                0,
+                mavutil.mavlink.MAV_STATE_ACTIVE,
+            )
+            self._last_heartbeat_sent_s = now
+        except Exception as e:
+            logging.warning("Failed to send companion heartbeat: %s", e)
 
     def get_rc_channel(self, channel: int) -> RCChannel:
         return self.rc_channels.get(channel, RCChannel(channel, 0))
@@ -546,11 +592,11 @@ def _send_photo_to_ground(
     except Exception as e:
         logging.error(f"Failed to send photo: {e}")
 
-def _stop_forward_velocity(mav: Mavlink, forward_velocity_active: bool):
+def _stop_forward_velocity(mav: Mavlink, forward_velocity_active: bool) -> bool:
     if forward_velocity_active:
         mav.send_forward_velocity(0.0)
-        forward_velocity_active = False
         logging.info("Forward motion stopped")
+    return False
 
 def main() -> None:
     logging.basicConfig(
@@ -570,6 +616,7 @@ def main() -> None:
 
         while True:
             time.sleep(0.02)
+            mav.send_companion_heartbeat()
 
             while mav.process_data_stream():
                 pass
@@ -578,7 +625,7 @@ def main() -> None:
             delta = time.time() - last_event_time
 
             if not spray_switch:
-                _stop_forward_velocity(mav, forward_velocity_active)
+                forward_velocity_active = _stop_forward_velocity(mav, forward_velocity_active)
 
             # Handle spray deactivation
             if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
@@ -604,22 +651,22 @@ def main() -> None:
 
             # Check all conditions for spray activation
             if not (spray_switch and delta >= SPRAY_COOLDOWN_SEC):
-                _stop_forward_velocity(mav, forward_velocity_active)
+                forward_velocity_active = _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             wall_dist = camera.get_distance_to_wall()
             if wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
-                _stop_forward_velocity(mav, forward_velocity_active)
+                forward_velocity_active = _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             target = camera.get_closest_target(frame)
             if target is None:
-                _stop_forward_velocity(mav, forward_velocity_active)
+                forward_velocity_active = _stop_forward_velocity(mav, forward_velocity_active)
                 continue
 
             x, y = target
             if _target_is_locked(frame, x, y):
-                _stop_forward_velocity(mav, forward_velocity_active)
+                forward_velocity_active = _stop_forward_velocity(mav, forward_velocity_active)
                 spray_active = True
                 mav.send_spray_command(activate=True)
                 last_event_time = time.time()
@@ -627,12 +674,21 @@ def main() -> None:
                 if SEND_TO_GROUND:
                     _send_photo_to_ground(frame, GROUNDSIDE_HOST, GROUNDSIDE_PORT, label="target_trigger", target=target)
             elif MOVE_FORWARD:
+                if not mav.is_guided_mode():
+                    if forward_velocity_active:
+                        forward_velocity_active = _stop_forward_velocity(mav, forward_velocity_active)
+                    logging.info(
+                        "Target found but mode is %s (need %s), not sending forward velocity",
+                        mav.current_mode_name or "unknown",
+                        GUIDED_MODE_NAME,
+                    )
+                    continue
                 mav.send_forward_velocity(FORWARD_SPEED_M_S)
                 if not forward_velocity_active:
                     forward_velocity_active = True
                     logging.info("Forward motion active")
             else:
-                _stop_forward_velocity(mav, forward_velocity_active)
+                forward_velocity_active = _stop_forward_velocity(mav, forward_velocity_active)
     finally:
         camera.close()
 
