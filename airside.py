@@ -247,34 +247,48 @@ class Camera:
     def _init_oakd(self) -> None:
         if dai is None:
             raise ImportError("depthai not installed")
-        
+
         try:
             pipeline = dai.Pipeline()
 
-            mono_left = pipeline.createMonoCamera()
-            mono_right = pipeline.createMonoCamera()
-            mono_left.setBoardSocket(dai.CameraBoardSocket.LEFT)
-            mono_right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
+            rgb = pipeline.create(dai.node.ColorCamera)
+            mono_left = pipeline.create(dai.node.MonoCamera)
+            mono_right = pipeline.create(dai.node.MonoCamera)
+            stereo = pipeline.create(dai.node.StereoDepth)
+
+            frame_width, frame_height = 640, 480
+            fps = 20
+
+            rgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
+            rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
+            rgb.setPreviewSize(frame_width, frame_height)
+            rgb.setInterleaved(False)
+            rgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
+            rgb.setFps(fps)
+            rgb.initialControl.setAutoExposureEnable()
+
+            mono_left.setBoardSocket(dai.CameraBoardSocket.CAM_B)
+            mono_right.setBoardSocket(dai.CameraBoardSocket.CAM_C)
             mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
             mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
+            mono_left.setFps(fps)
+            mono_right.setFps(fps)
 
-            stereo = pipeline.createStereoDepth()
-            stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
+            stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.DENSITY)
+            stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
+            stereo.setOutputSize(frame_width, frame_height)
+            stereo.setSubpixel(True)
+            stereo.setLeftRightCheck(True)
+
             mono_left.out.link(stereo.left)
             mono_right.out.link(stereo.right)
 
-            xout_depth = pipeline.createXLinkOut()
-            xout_depth.setStreamName("depth")
-            stereo.depth.link(xout_depth.input)
-
-            rgb = pipeline.createColorCamera()
-            rgb.setBoardSocket(dai.CameraBoardSocket.RGB)
-            rgb.setPreviewSize(640, 480)
-            rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
-
-            xout_rgb = pipeline.createXLinkOut()
+            xout_rgb = pipeline.create(dai.node.XLinkOut)
+            xout_depth = pipeline.create(dai.node.XLinkOut)
             xout_rgb.setStreamName("rgb")
+            xout_depth.setStreamName("depth")
             rgb.preview.link(xout_rgb.input)
+            stereo.depth.link(xout_depth.input)
 
             self._oakd = dai.Device(pipeline)
             self._oakd_rgb_queue = self._oakd.getOutputQueue(
