@@ -110,12 +110,16 @@ class Mavlink:
             self.mav = mavutil.mavlink_connection(
                 self.address,
                 dialect="ardupilotmega",
-                baud=57600,
                 source_component=191,
             )
             logging.info("Waiting for MAVLink heartbeat...")
-            self.mav.wait_heartbeat()
-            logging.info("MAVLink heartbeat received")
+            try:
+                self.mav.wait_heartbeat(timeout=10)
+                logging.info("MAVLink heartbeat received")
+            except Exception:
+                logging.warning(
+                    "No heartbeat received within timeout; continuing anyway"
+                )
             self._configure_rc_stream()
             logging.info("MAVLink connected")
             return True
