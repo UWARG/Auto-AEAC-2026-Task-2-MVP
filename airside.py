@@ -31,7 +31,7 @@ except ImportError:
     dai = None
 
 
-MAVLINK_ADDRESS = "/dev/serial0" # "tcp:localhost:14550"
+MAVLINK_ADDRESS = "udpout:192.168.144.14:5000" # "/dev/serial0" "tcp:localhost:14550"
 
 ACTIVATE_SPRAY_CHANNEL = 9
 RC_MESSAGE_RATE_HZ = 20
@@ -51,7 +51,7 @@ SEND_TO_GROUND = True
 DEFAULT_GROUNDSIDE_HOST = "127.0.0.1"
 DEFAULT_GROUNDSIDE_PORT = 5005
 
-CAMERA_MODE = "arducam"  # "oakd" or "arducam"
+CAMERA_MODE = "oakd"  # "oakd" or "arducam"
 
 class Colour:
     def __init__(
