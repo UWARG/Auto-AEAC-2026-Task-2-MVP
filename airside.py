@@ -216,13 +216,17 @@ class Mavlink:
         r, g, b = (0.0, 255.0, 0.0) if activate else (255.0, 0.0, 0.0)
 
         try:
-            self.mav.mav.led_control_send(
-                self.mav.target_system,
-                self.mav.target_component,
-                0,
-                255,
-                3,
-                [int(r), int(g), int(b)] + [0] * 21,
+            # self.mav.mav.led_control_send(
+            #     self.mav.target_system,
+            #     self.mav.target_component,
+            #     0,
+            #     255,
+            #     3,
+            #     [int(r), int(g), int(b)] + [0] * 21,
+            # )
+            self.mav.mav.statustext_send(
+                mavutil.mavlink.MAV_SEVERITY_CRITICAL,
+                b(("SPRAY ON" if activate else "SPRAY OFF") + "at: " + time.strftime("%H:%M:%S")),
             )
             logging.info(
                 "LED set to %s",
