@@ -33,7 +33,7 @@ except ImportError:
 
 MAVLINK_ADDRESS = "udpout:192.168.144.14:5000" # "/dev/serial0" "tcp:localhost:14550"
 
-ACTIVATE_SPRAY_CHANNEL = 9
+ACTIVATE_SPRAY_CHANNEL = 13
 RC_MESSAGE_RATE_HZ = 20
 
 SPRAY_DURATION_SEC = 0.5
@@ -571,7 +571,7 @@ def main(
             while mav.process_data_stream():
                 pass
 
-            spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw >= 1500
+            spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw >= 1800
             delta = time.time() - last_event_time
 
             # Handle spray deactivation
