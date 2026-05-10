@@ -114,7 +114,7 @@ class Mavlink:
             )
             logging.info("Waiting for MAVLink heartbeat...")
             try:
-                self.mav.wait_heartbeat(timeout=10)
+                self.mav.wait_heartbeat(timeout=5)
                 logging.info("MAVLink heartbeat received")
             except Exception:
                 logging.warning(
@@ -283,8 +283,8 @@ class Camera:
             mono_left.out.link(stereo.left)
             mono_right.out.link(stereo.right)
 
-            xout_rgb = pipeline.create(dai.node.XLinkOut)
-            xout_depth = pipeline.create(dai.node.XLinkOut)
+            xout_rgb = pipeline.createXLinkOut()
+            xout_depth = pipeline.createXLinkOut()
             xout_rgb.setStreamName("rgb")
             xout_depth.setStreamName("depth")
             rgb.preview.link(xout_rgb.input)
