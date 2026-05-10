@@ -106,12 +106,15 @@ class Mavlink:
     @typing.no_type_check
     def _attempt_connect(self) -> bool:
         try:
+            logging.info(f"Connecting to MAVLink at {self.address}...")
             self.mav = mavutil.mavlink_connection(
                 self.address,
                 baud=115200,
                 source_component=191,
             )
+            logging.info("Waiting for MAVLink heartbeat...")
             self.mav.wait_heartbeat()
+            logging.info("MAVLink heartbeat received")
             self._configure_rc_stream()
             logging.info("MAVLink connected")
             return True
