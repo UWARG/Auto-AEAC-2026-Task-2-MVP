@@ -600,6 +600,8 @@ def main(
             if not (spray_switch and delta >= SPRAY_COOLDOWN_SEC):
                 continue
 
+            logging.info("Spray switch on")
+
             wall_dist = camera.get_distance_to_wall()
             if wall_dist <= 0 or wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
                 continue
