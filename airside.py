@@ -383,7 +383,7 @@ class Camera:
             self._webcam.release()
 
         if self._oakd is not None:
-            self._oakd.close()
+            self._oakd.stop()
 
     @typing.no_type_check
     def capture_frame(self) -> Optional[np.ndarray]:
