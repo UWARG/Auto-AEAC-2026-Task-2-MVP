@@ -95,7 +95,7 @@ class Mavlink:
     def __init__(self, address: str):
         self.address = address
         self.mav = None
-        self.rc_channels = {i: RCChannel(i, 0) for i in range(1, 10)}
+        self.rc_channels = {i: RCChannel(i, 0) for i in range(1, 16)}
         self._connect()
 
     def _connect(self) -> None:
@@ -571,46 +571,79 @@ def main(
             while mav.process_data_stream():
                 pass
 
-            spray_switch = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw >= 1800
+            spray_raw = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw
+            spray_switch = spray_raw >= 1800
             delta = time.time() - last_event_time
 
             # Handle spray deactivation
             if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
+                deactivation_reason = (
+                    "switch off"
+                    if not spray_switch
+                    else f"duration reached ({delta:.2f}s >= {SPRAY_DURATION_SEC:.2f}s)"
+                )
                 spray_active = False
                 mav.send_spray_command(activate=False)
                 last_event_time = time.time()
-                logging.info("Spray deactivated")
+                logging.info("Spray deactivated (%s)", deactivation_reason)
 
                 if SEND_TO_GROUND:
                     attempts = 0
+                    sent = False
                     while attempts < 100:
                         frame = camera.capture_frame()
                         if frame is not None:
                             _send_photo_to_ground(frame, groundside_host, groundside_port)
+                            sent = True
                             break
                         attempts += 1
                         time.sleep(0.02)
+                    if not sent:
+                        logging.warning(
+                            "Failed to capture post-spray confirmation frame after %d attempts",
+                            attempts,
+                        )
                 continue
 
             frame = camera.capture_frame()
             if frame is None:
+                logging.debug("No RGB frame available yet")
                 continue
 
             # Check all conditions for spray activation
-            if not (spray_switch and delta >= SPRAY_COOLDOWN_SEC):
+            if not spray_switch:
+                logging.debug(
+                    "Spray switch off on RC channel %d (raw=%d)",
+                    ACTIVATE_SPRAY_CHANNEL,
+                    spray_raw,
+                )
                 continue
 
-            logging.info("Spray switch on")
+            if delta < SPRAY_COOLDOWN_SEC:
+                logging.debug(
+                    "Spray blocked by cooldown: %.2fs remaining",
+                    SPRAY_COOLDOWN_SEC - delta,
+                )
+                continue
+
+            logging.info("Spray switch on (raw=%d)", spray_raw)
 
             wall_dist = camera.get_distance_to_wall()
             if wall_dist <= 0 or wall_dist > DISTANCE_TO_WALL_THRESHOLD_M:
+                logging.info(
+                    "Spray blocked by distance gate: %.2fm (threshold <= %.2fm)",
+                    wall_dist,
+                    DISTANCE_TO_WALL_THRESHOLD_M,
+                )
                 continue
 
             target = camera.get_closest_target(frame)
             if target is None:
+                logging.info("Spray blocked: no valid target detected")
                 continue
 
             x, y = target
+            logging.info("Target candidate at (%.1f, %.1f)", x, y)
             if _target_is_locked(frame, x, y):
                 spray_active = True
                 mav.send_spray_command(activate=True)
@@ -618,6 +651,16 @@ def main(
                 logging.info("Spray activated")
                 if SEND_TO_GROUND:
                     _send_photo_to_ground(frame, groundside_host, groundside_port, label="target_trigger", target=target)
+            else:
+                lock_error = np.hypot(
+                    x - ((frame.shape[1] / 2) + TARGET_CENTER_POSITION_PX[0]),
+                    y - ((frame.shape[0] / 2) + TARGET_CENTER_POSITION_PX[1]),
+                )
+                logging.info(
+                    "Spray blocked: target not locked (error=%.1fpx, threshold=%.1fpx)",
+                    lock_error,
+                    float(RADIUS_THRESHOLD_PX),
+                )
     finally:
         camera.close()
 
