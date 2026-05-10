@@ -575,6 +575,8 @@ def main(
             spray_switch = spray_raw >= 1800
             delta = time.time() - last_event_time
 
+            logging.info(f"spray: raw={spray_raw}, switch={'on' if spray_switch else 'off'}, delta={delta:.2f}s")
+
             # Handle spray deactivation
             if spray_active and (not spray_switch or delta >= SPRAY_DURATION_SEC):
                 deactivation_reason = (
