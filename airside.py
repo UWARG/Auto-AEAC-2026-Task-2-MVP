@@ -169,6 +169,27 @@ class Mavlink:
                 self.rc_channels[ch] = RCChannel(ch, raw)
         return True
 
+    def process_heartbeat(self) -> bool:
+        """Process one heartbeat message and log it. Returns True if processed."""
+        if self.mav is None:
+            return False
+
+        msg = self.mav.recv_match(type="HEARTBEAT", blocking=False)
+        if msg is None:
+            return False
+
+        logging.info(
+            "Heartbeat loop: sys=%s comp=%s type=%s autopilot=%s base_mode=%s custom_mode=%s system_status=%s",
+            getattr(msg, "get_srcSystem", lambda: "?")(),
+            getattr(msg, "get_srcComponent", lambda: "?")(),
+            getattr(msg, "type", "?"),
+            getattr(msg, "autopilot", "?"),
+            getattr(msg, "base_mode", "?"),
+            getattr(msg, "custom_mode", "?"),
+            getattr(msg, "system_status", "?"),
+        )
+        return True
+
     def get_rc_channel(self, channel: int) -> RCChannel:
         return self.rc_channels.get(channel, RCChannel(channel, 0))
 
@@ -570,6 +591,9 @@ def main(
             time.sleep(0.02)
 
             while mav.process_data_stream():
+                pass
+
+            while mav.process_heartbeat():
                 pass
 
             spray_raw = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw
