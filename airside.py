@@ -174,7 +174,7 @@ class Mavlink:
         if self.mav is None:
             return False
 
-        msg = self.mav.recv_match(type="HEARTBEAT", blocking=False)
+        msg = self.mav.recv_match(type="HEARTBEAT", blocking=True)
         if msg is None:
             return False
 
