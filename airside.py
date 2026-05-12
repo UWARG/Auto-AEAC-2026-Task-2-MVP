@@ -159,6 +159,7 @@ class Mavlink:
 
         msg = self.mav.recv_match(type=["RC_CHANNELS", "RC_CHANNELS_RAW"], blocking=False)
         if msg is None:
+            print("here")
             return False
 
         for ch in self.rc_channels:
@@ -592,8 +593,8 @@ def main(
             while mav.process_data_stream():
                 pass
 
-            while mav.process_heartbeat():
-                pass
+            # while mav.process_heartbeat():
+                # pass
 
             spray_raw = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw
             spray_switch = spray_raw >= 1800
