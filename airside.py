@@ -31,7 +31,7 @@ except ImportError:
     dai = None
 
 
-MAVLINK_ADDRESS = "udpout:192.168.144.14:5000" # "/dev/serial0" "tcp:localhost:14550"
+MAVLINK_ADDRESS = "/dev/ttyAMA0" # "/dev/serial0" "tcp:localhost:14550" "udpout:192.168.144.14:5000"
 
 ACTIVATE_SPRAY_CHANNEL = 13
 RC_MESSAGE_RATE_HZ = 20
