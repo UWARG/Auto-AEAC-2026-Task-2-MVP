@@ -593,14 +593,14 @@ def main(
             while mav.process_data_stream():
                 pass
 
-            while mav.process_heartbeat():
-                pass
+            # while mav.process_heartbeat():
+            #     pass
 
             spray_raw = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw
             spray_switch = spray_raw >= 1800
             delta = time.time() - last_event_time
 
-            # logging.info(f"spray: raw={spray_raw}, switch={'on' if spray_switch else 'off'}, delta={delta:.2f}s")
+            logging.info(f"spray: raw={spray_raw}, switch={'on' if spray_switch else 'off'}, delta={delta:.2f}s")
             logging.info(f"{mav.get_rc_channel(1).raw} {mav.get_rc_channel(2).raw} {mav.get_rc_channel(3).raw} {mav.get_rc_channel(4).raw}")
 
             # Handle spray deactivation
