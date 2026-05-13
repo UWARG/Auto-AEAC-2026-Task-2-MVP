@@ -5,7 +5,7 @@ MAVLINK_ADDRESS = "/dev/ttyAMA0"
 BAUD = 57600
 MESSAGE = "Hello sky"
 
-mav = mavutil.mavlink_connection(MAVLINK_ADDRESS, baud=BAUD)
+mav = mavutil.mavlink_connection(MAVLINK_ADDRESS)
 
 print(f"Waiting for heartbeat from {MAVLINK_ADDRESS} at {BAUD} baud...")
 mav.wait_heartbeat()
