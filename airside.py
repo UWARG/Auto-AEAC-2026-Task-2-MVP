@@ -72,7 +72,7 @@ class Colour:
 
 class Colours(Enum):
     RED = Colour("Red", (0, 120, 120), (10, 255, 255))
-    RED2 = Colour("Red", (168, 120, 120), (180, 255, 255))
+    ORANGE = Colour("Orange", (135, 75, 0), (255, 210, 59))
     GREEN = Colour("Green", (40, 120, 120), (80, 255, 255))
     BLUE = Colour("Blue", (90, 120, 120), (120, 255, 255))
     YELLOW = Colour("Yellow", (26, 120, 120), (36, 255, 255))
