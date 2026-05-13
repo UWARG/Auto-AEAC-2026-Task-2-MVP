@@ -6,9 +6,6 @@ MESSAGE = "Hello sky"
 
 mav = mavutil.mavlink_connection(
     MAVLINK_ADDRESS,
-    dialect="ardupilotmega",
-    source_system=51,
-    source_component=191,
 )
 
 print(f"Waiting for heartbeat from {MAVLINK_ADDRESS}...")
