@@ -17,7 +17,7 @@ print("Heartbeat received")
 
 status_text = MESSAGE + " at: " + time.strftime("%H:%M:%S")
 mav.mav.statustext_send(
-    mavutil.mavlink.MAV_SEVERITY_CRITICAL,
+    mavutil.mavlink.MAV_SEVERITY_INFO,
     status_text.encode("utf-8"),
 )
 print(f"Sent: {status_text}")
