@@ -159,7 +159,6 @@ class Mavlink:
 
         msg = self.mav.recv_match(type=["RC_CHANNELS", "RC_CHANNELS_RAW"], blocking=False)
         if msg is None:
-            print("here")
             return False
 
         for ch in self.rc_channels:
