@@ -2,17 +2,16 @@ import time
 from pymavlink import mavutil
 
 MAVLINK_ADDRESS = "/dev/ttyAMA0"
-BAUD = 57600
 MESSAGE = "Hello sky"
 
 mav = mavutil.mavlink_connection(MAVLINK_ADDRESS)
 
-print(f"Waiting for heartbeat from {MAVLINK_ADDRESS} at {BAUD} baud...")
+print(f"Waiting for heartbeat from {MAVLINK_ADDRESS}...")
 mav.wait_heartbeat()
 print(f"Heartbeat received: sysid={mav.target_system} compid={mav.target_component}")
 
 mav.mav.heartbeat_send(
-    mavutil.mavlink.MAV_TYPE_GCS,
+    mavutil.mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
     mavutil.mavlink.MAV_AUTOPILOT_INVALID,
     0, 0, 0,
 )
