@@ -7,6 +7,7 @@ MESSAGE = "Hello sky"
 mav = mavutil.mavlink_connection(
     MAVLINK_ADDRESS,
     dialect="ardupilotmega",
+    source_system=1,
     source_component=191,
 )
 
@@ -20,3 +21,4 @@ mav.mav.statustext_send(
     status_text.encode("utf-8"),
 )
 print(f"Sent: {status_text}")
+time.sleep(1)
