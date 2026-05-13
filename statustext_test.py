@@ -4,6 +4,8 @@ from pymavlink import mavutil
 MAVLINK_ADDRESS = "/dev/ttyAMA0"
 MESSAGE = "Hello sky"
 
+print(f"Connecting to MAVLink at {MAVLINK_ADDRESS}...")
+
 mav = mavutil.mavlink_connection(
     MAVLINK_ADDRESS,
     source_component=mavutil.mavlink.MAV_COMP_ID_ONBOARD_COMPUTER,
