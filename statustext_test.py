@@ -34,6 +34,6 @@ deadline = time.time() + 3
 while time.time() < deadline:
     msg = mav.recv_match(blocking=False)
     if msg:
-        print(f"  RX: {msg.get_type()} - {msg.line()}")
+        print(f"  RX: {msg.get_type()}")
     else:
         time.sleep(0.01)
