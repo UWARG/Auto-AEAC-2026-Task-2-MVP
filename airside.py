@@ -195,16 +195,13 @@ class Mavlink:
     @typing.no_type_check
     def send_spray_command(self, activate: bool) -> None:
         """
-        Sets the leds to match the sprayer's state.
-
-        Green = spray on, Red = spray off.
+        Sends a spray command.
         """
         if self.mav is None:
             return
 
-        r, g, b = (0.0, 255.0, 0.0) if activate else (255.0, 0.0, 0.0)
-
         try:
+            # r, g, b = (0.0, 255.0, 0.0) if activate else (255.0, 0.0, 0.0)
             # self.mav.mav.led_control_send(
             #     self.mav.target_system,
             #     self.mav.target_component,
@@ -212,6 +209,10 @@ class Mavlink:
             #     255,
             #     3,
             #     [int(r), int(g), int(b)] + [0] * 21,
+            # )
+            # logging.info(
+            #     "LED set to %s",
+            #     "green (spray on)" if activate else "red (spray off)",
             # )
             status_text = (
                 ("SPRAY ON" if activate else "SPRAY OFF")
@@ -222,10 +223,7 @@ class Mavlink:
                 mavutil.mavlink.MAV_SEVERITY_CRITICAL,
                 status_text.encode("utf-8"),
             )
-            logging.info(
-                "LED set to %s",
-                "green (spray on)" if activate else "red (spray off)",
-            )
+            logging.info("Spray command sent: %s", status_text)
         except Exception as e:
             logging.error(f"Failed to send command: {e}")
 
