@@ -110,6 +110,7 @@ class Mavlink:
             self.mav = mavutil.mavlink_connection(
                 self.address,
                 dialect="ardupilotmega",
+                source_system=1,
                 source_component=191,
             )
             logging.info("Waiting for MAVLink heartbeat...")
@@ -199,19 +200,6 @@ class Mavlink:
         """
         if self.mav is None:
             return
-        self.mav.mav.command_long_send(
-            self.mav.target_system,
-            self.mav.target_component,
-            mavutil.mavlink.MAV_CMD_DO_SET_RELAY,
-            0,
-            1,
-            1 if activate else 0,
-            0,
-            0,
-            0,
-            0,
-            0
-        )
 
         try:
             # r, g, b = (0.0, 255.0, 0.0) if activate else (255.0, 0.0, 0.0)
@@ -236,6 +224,21 @@ class Mavlink:
                 mavutil.mavlink.MAV_SEVERITY_INFO,
                 status_text.encode("utf-8"),
             )
+
+            self.mav.mav.command_long_send(
+                self.mav.target_system,
+                self.mav.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_RELAY,
+                0,
+                1,
+                1 if activate else 0,
+                0,
+                0,
+                0,
+                0,
+                0
+            )
+
             logging.info("Spray command sent: %s", status_text)
         except Exception as e:
             logging.error(f"Failed to send command: {e}")
@@ -607,7 +610,7 @@ def main(
                 # pass
 
             spray_raw = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw
-            spray_switch = spray_raw >= 1800
+            spray_switch = True # spray_raw >= 1800
             delta = time.time() - last_event_time
 
             # logging.info(f"spray: raw={spray_raw}, switch={'on' if spray_switch else 'off'}, delta={delta:.2f}s")
