@@ -201,6 +201,19 @@ class Mavlink:
         """
         if self.mav is None:
             return
+        self.mav.mav.command_long_send(
+            self.mav.target_system,
+            self.mav.target_component,
+            mavutil.mavlink.MAV_CMD_DO_SET_RELAY,
+            0,
+            1,
+            1 if activate else 0,
+            0,
+            0,
+            0,
+            0,
+            0
+        )
 
         r, g, b = (0.0, 255.0, 0.0) if activate else (255.0, 0.0, 0.0)
 
