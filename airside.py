@@ -110,6 +110,7 @@ class Mavlink:
             self.mav = mavutil.mavlink_connection(
                 self.address,
                 dialect="ardupilotmega",
+                source_system=1,
                 source_component=191,
             )
             logging.info("Waiting for MAVLink heartbeat...")
@@ -254,6 +255,21 @@ class Mavlink:
                 mavutil.mavlink.MAV_SEVERITY_INFO,
                 status_text.encode("utf-8"),
             )
+
+            self.mav.mav.command_long_send(
+                self.mav.target_system,
+                self.mav.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_RELAY,
+                0,
+                1,
+                1 if activate else 0,
+                0,
+                0,
+                0,
+                0,
+                0
+            )
+
             logging.info("Spray command sent: %s", status_text)
         except Exception as e:
             logging.error(f"Failed to send command: {e}")
@@ -525,9 +541,9 @@ class Camera:
             if circularity < MIN_CIRCULARITY:
                 continue
 
-            contour_mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+            contour_mask = np.zeros(grey.shape[:2], dtype=np.uint8)
             cv2.drawContours(contour_mask, [contour], -1, 255, -1)
-            colored_pixels = cv2.countNonZero(cv2.bitwise_and(mask, contour_mask))
+            colored_pixels = cv2.countNonZero(cv2.bitwise_and(thresh, contour_mask))
             fill_ratio = colored_pixels / area if area > 0 else 0
             if fill_ratio < MIN_FILL_RATIO:
                 continue
@@ -661,7 +677,7 @@ def main(
                 # pass
 
             spray_raw = mav.get_rc_channel(ACTIVATE_SPRAY_CHANNEL).raw
-            spray_switch = True
+            spray_switch = True # spray_raw >= 1800
             delta = time.time() - last_event_time
 
             # logging.info(f"spray: raw={spray_raw}, switch={'on' if spray_switch else 'off'}, delta={delta:.2f}s")
