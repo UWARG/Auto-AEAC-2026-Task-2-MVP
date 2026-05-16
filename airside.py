@@ -215,12 +215,43 @@ class Mavlink:
             #     "LED set to %s",
             #     "green (spray on)" if activate else "red (spray off)",
             # )
+
+            """
+            self.mav.mav.command_long_send(
+                self.mav.target_system,
+                self.mav.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_RELAY,
+                0,
+                1,
+                1 if activate else 0,
+                0,
+                0,
+                0,
+                0,
+                0
+            )
+            """
+            self.mav.mav.command_long_send(
+                self.mav.target_system,
+                self.mav.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
+                0,
+                6,
+                2000 if activate else 1500,
+                0,
+                0,
+                0,
+                0,
+                0
+            )
+
             status_text = (
                 ("SPRAY ON" if activate else "SPRAY OFF")
                 + " at: "
                 + time.strftime("%H:%M:%S")
             )
             self.mav.mav.statustext_send(
+                
                 mavutil.mavlink.MAV_SEVERITY_INFO,
                 status_text.encode("utf-8"),
             )
@@ -445,14 +476,14 @@ class Camera:
         if frame is None:
             return None
 
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        #hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         center_x = frame.shape[1] / 2 + TARGET_CENTER_POSITION_PX[0]
         center_y = frame.shape[0] / 2 + TARGET_CENTER_POSITION_PX[1]
 
         closest = None
         min_dist = float("inf")
-
+        """
         for colour_enum in Colours:
             colour = colour_enum.value
             lower = np.array(colour.lower_hsv, dtype=np.uint8)
@@ -491,7 +522,43 @@ class Camera:
                 if dist < min_dist:
                     min_dist = dist
                     closest = (x, y)
+            """
 
+        grey=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+        thresh=cv2.threshold(grey,127,255,cv2.THRESH_BINARY)[1]
+
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < MIN_AREA:
+                continue
+
+            perimeter = cv2.arcLength(contour, True)
+            if perimeter <= 0:
+                continue
+
+            circularity = 4 * np.pi * area / (perimeter * perimeter)
+            if circularity < MIN_CIRCULARITY:
+                continue
+
+            contour_mask = np.zeros(grey.shape[:2], dtype=np.uint8)
+            cv2.drawContours(contour_mask, [contour], -1, 255, -1)
+            colored_pixels = cv2.countNonZero(cv2.bitwise_and(thresh, contour_mask))
+            fill_ratio = colored_pixels / area if area > 0 else 0
+            if fill_ratio < MIN_FILL_RATIO:
+                continue
+
+            m = cv2.moments(contour)
+            if m["m00"] == 0:
+                continue
+
+            x = m["m10"] / m["m00"]
+            y = m["m01"] / m["m00"]
+            dist = (x - center_x) ** 2 + (y - center_y) ** 2
+
+            if dist < min_dist:
+                min_dist = dist
+                closest = (x, y)
         return closest
 
 
