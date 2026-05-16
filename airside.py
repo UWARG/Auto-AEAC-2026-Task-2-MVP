@@ -9,7 +9,6 @@ Behavior:
 """
 
 import argparse
-from enum import Enum
 import logging
 import socket
 import struct
@@ -53,33 +52,10 @@ DEFAULT_GROUNDSIDE_PORT = 5005
 
 CAMERA_MODE = "oakd"  # "oakd" or "arducam"
 
-class Colour:
-    def __init__(
-        self,
-        name: str,
-        lower_hsv: tuple[int, int, int],
-        upper_hsv: tuple[int, int, int],
-    ):
-        self.name = name
-        self.lower_hsv = lower_hsv
-        self.upper_hsv = upper_hsv
-
-    def __str__(self):
-        return f"({self.name}, {self.lower_hsv}, {self.upper_hsv})"
-
-    def __repr__(self):
-        return f"Colour(name={self.name}, lower_hsv={self.lower_hsv}, upper_hsv={self.upper_hsv})"
-
-class Colours(Enum):
-    RED = Colour("Red", (0, 120, 120), (10, 255, 255))
-    ORANGE = Colour("Orange", (135, 75, 0), (255, 210, 59))
-    GREEN = Colour("Green", (40, 120, 120), (80, 255, 255))
-    BLUE = Colour("Blue", (90, 120, 120), (120, 255, 255))
-    YELLOW = Colour("Yellow", (26, 120, 120), (36, 255, 255))
-    WHITE = Colour("White", (0, 0, 225), (255, 30, 255))
-    BLACK = Colour("Black", (0, 0, 0), (255, 255, 30))
-    PALE_PURPLE = Colour("Pale Purple", (120, 20, 155), (160, 80, 255))
-    # WHITE = Colour("White", (0, 0, 200), (180, 255, 255))
+RED_HSV_RANGES = (
+    ((0, 40, 40), (20, 255, 255)),
+    ((160, 40, 40), (179, 255, 255)),
+)
 
 
 @dataclass
@@ -367,7 +343,7 @@ class Camera:
                 if self.mode == "oakd":
                     if self._oakd_rgb_queue is not None:
                         in_rgb = self._oakd_rgb_queue.tryGet()
-                        frame = in_rgb.getCvFrame() if in_rgb else None
+                        frame = in_rgb.getCvFrame() if in_rgb else None # type: ignore
                 else:
                     if self._webcam is not None:
                         ret, captured = self._webcam.read()
@@ -392,7 +368,7 @@ class Camera:
                     depth_message = depth_queue.tryGet()
                     if depth_message is None:
                         continue
-                    depth_frame = depth_message.getFrame()
+                    depth_frame = depth_message.getFrame() # type: ignore
                     valid = depth_frame[depth_frame > 0]
                     if valid.size > 0:
                         depth_m = float(np.min(valid)) / 1000.0
@@ -446,58 +422,20 @@ class Camera:
         if frame is None:
             return None
 
-        #hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         center_x = frame.shape[1] / 2 + TARGET_CENTER_POSITION_PX[0]
         center_y = frame.shape[0] / 2 + TARGET_CENTER_POSITION_PX[1]
 
         closest = None
         min_dist = float("inf")
-        """
-        for colour_enum in Colours:
-            colour = colour_enum.value
-            lower = np.array(colour.lower_hsv, dtype=np.uint8)
-            upper = np.array(colour.upper_hsv, dtype=np.uint8)
-            mask = cv2.inRange(hsv, lower, upper)
+        mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+        for lower_hsv, upper_hsv in RED_HSV_RANGES:
+            lower = np.array(lower_hsv, dtype=np.uint8)
+            upper = np.array(upper_hsv, dtype=np.uint8)
+            mask = cv2.bitwise_or(mask, cv2.inRange(hsv, lower, upper))
 
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            for contour in contours:
-                area = cv2.contourArea(contour)
-                if area < MIN_AREA:
-                    continue
-
-                perimeter = cv2.arcLength(contour, True)
-                if perimeter <= 0:
-                    continue
-
-                circularity = 4 * np.pi * area / (perimeter * perimeter)
-                if circularity < MIN_CIRCULARITY:
-                    continue
-
-                contour_mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
-                cv2.drawContours(contour_mask, [contour], -1, 255, -1)
-                colored_pixels = cv2.countNonZero(cv2.bitwise_and(mask, contour_mask))
-                fill_ratio = colored_pixels / area if area > 0 else 0
-                if fill_ratio < MIN_FILL_RATIO:
-                    continue
-
-                m = cv2.moments(contour)
-                if m["m00"] == 0:
-                    continue
-
-                x = m["m10"] / m["m00"]
-                y = m["m01"] / m["m00"]
-                dist = (x - center_x) ** 2 + (y - center_y) ** 2
-
-                if dist < min_dist:
-                    min_dist = dist
-                    closest = (x, y)
-            """
-
-        grey=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-        thresh=cv2.threshold(grey,127,255,cv2.THRESH_BINARY)[1]
-
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
             area = cv2.contourArea(contour)
             if area < MIN_AREA:
@@ -511,9 +449,9 @@ class Camera:
             if circularity < MIN_CIRCULARITY:
                 continue
 
-            contour_mask = np.zeros(grey.shape[:2], dtype=np.uint8)
+            contour_mask = np.zeros(mask.shape, dtype=np.uint8)
             cv2.drawContours(contour_mask, [contour], -1, 255, -1)
-            colored_pixels = cv2.countNonZero(cv2.bitwise_and(thresh, contour_mask))
+            colored_pixels = cv2.countNonZero(cv2.bitwise_and(mask, contour_mask))
             fill_ratio = colored_pixels / area if area > 0 else 0
             if fill_ratio < MIN_FILL_RATIO:
                 continue
