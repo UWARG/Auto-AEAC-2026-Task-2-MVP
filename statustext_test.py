@@ -22,5 +22,9 @@ while True:
         mavutil.mavlink.MAV_AUTOPILOT_INVALID,
         0, 0, 0,
     )
-    print("Heartbeat sent")
+    mav.mav.statustext_send(
+        mavutil.mavlink.MAV_SEVERITY_INFO,
+        b"Hello from the onboard computer!"
+    )
+    print("Heartbeat and status text sent")
     time.sleep(1)
