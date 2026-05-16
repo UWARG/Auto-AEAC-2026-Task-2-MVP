@@ -216,7 +216,6 @@ class Mavlink:
             #     "green (spray on)" if activate else "red (spray off)",
             # )
 
-            """
             self.mav.mav.command_long_send(
                 self.mav.target_system,
                 self.mav.target_component,
@@ -224,20 +223,6 @@ class Mavlink:
                 0,
                 1,
                 1 if activate else 0,
-                0,
-                0,
-                0,
-                0,
-                0
-            )
-            """
-            self.mav.mav.command_long_send(
-                self.mav.target_system,
-                self.mav.target_component,
-                mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-                0,
-                6,
-                2000 if activate else 1500,
                 0,
                 0,
                 0,
@@ -251,23 +236,8 @@ class Mavlink:
                 + time.strftime("%H:%M:%S")
             )
             self.mav.mav.statustext_send(
-                
                 mavutil.mavlink.MAV_SEVERITY_INFO,
                 status_text.encode("utf-8"),
-            )
-
-            self.mav.mav.command_long_send(
-                self.mav.target_system,
-                self.mav.target_component,
-                mavutil.mavlink.MAV_CMD_DO_SET_RELAY,
-                0,
-                1,
-                1 if activate else 0,
-                0,
-                0,
-                0,
-                0,
-                0
             )
 
             logging.info("Spray command sent: %s", status_text)
