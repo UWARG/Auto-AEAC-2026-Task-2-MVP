@@ -1,0 +1,6 @@
+opencv-python-headless
+numpy
+pymavlink
+pyserial
+smbus2
+depthai
