@@ -7,6 +7,6 @@ python -m airside --groundside-host 100.110.235.23
 ```
 
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
 python -m groundside
 ```

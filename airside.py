@@ -197,7 +197,7 @@ class Mavlink:
                 self.mav.target_component,
                 mavutil.mavlink.MAV_CMD_DO_SET_RELAY,
                 0,
-                1,
+                0,
                 1 if activate else 0,
                 0,
                 0,
